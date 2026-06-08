@@ -2,6 +2,8 @@
 
 A simple Docker Compose setup for DHIS2 Core `2.42.4` with a PostGIS-backed PostgreSQL database.
 
+Repository: https://github.com/dhis2-chap/docker-dhis2-core
+
 ## Prerequisites
 
 - Docker installed
@@ -14,6 +16,18 @@ Optional:
 - `DB_NAME` (defaults to `dhis`)
 - `DB_HOSTNAME` (defaults to `db`)
 - `DHIS2_DB_DUMP_URL` (defaults to the Laos 2.42 climate demo database)
+
+## .env setup
+
+Copy the provided .env.example file into `.env` in the repository root:
+
+```bash
+cp .env.example .env
+```
+
+You can leave the example values as-is or update them as desired.
+
+Docker Compose automatically loads `.env` from the project directory.
 
 ## Start services
 
