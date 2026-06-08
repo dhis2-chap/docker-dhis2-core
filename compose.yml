@@ -1,5 +1,7 @@
-# Standalone DHIS2 + CHAP docker-compose
-# Copy this file (along with dhis-chap.conf and log4j2.xml) into the target repo.
+# Standalone DHIS2 stack (web + PostGIS db + one-shot dump loader).
+#   docker compose up -d
+# To also run chap-core alongside it, use the overlay that includes this file:
+#   docker compose -f compose.chap.yml up -d
 # Required environment variables: DB_USERNAME, DB_PASSWORD
 # Optional: DHIS2_DB_DUMP_URL (defaults to the Laos 2.42 climate demo database)
 
@@ -15,7 +17,14 @@ services:
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
     ports:
-      - "127.0.0.1:8080:8080"
+      # Override DHIS2_PORT to coexist with another stack already on 8080.
+      - "127.0.0.1:${DHIS2_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/dhis-web-login/index.html | grep -q 200"]
+      interval: 30s
+      timeout: 5s
+      retries: 60
+      start_period: 120s
     depends_on:
       db:
         condition: service_healthy
@@ -42,8 +51,12 @@ services:
     depends_on:
       db-dump:
         condition: service_completed_successfully
+    # Published on 127.0.0.1 so a SQL client (DBeaver, psql) can browse the DHIS2
+    # data. High default port (15432) to avoid clashing with a local postgres on
+    # 5432; override DHIS2_DB_PORT per stack. Drop the "127.0.0.1:" prefix to let
+    # other machines on the network connect.
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${DHIS2_DB_PORT:-15432}:5432"
 
   db-dump:
     image: alpine
@@ -56,6 +69,23 @@ services:
     volumes:
       - db-dump:/opt/dump
       - ./docker/prepare-dump.sh:/opt/prepare-dump.sh:ro
+
+  # One-shot: a freshly loaded dump has no populated analytics_* tables, so the
+  # Data Visualizer / Climate app / CHAP Modelling App see no data until analytics
+  # runs. This kicks off the analytics export, polls it to completion, then exits.
+  analytics-trigger:
+    image: alpine
+    restart: on-failure
+    command: sh /opt/trigger-analytics.sh
+    environment:
+      DHIS2_BASE_URL: "http://web:8080"
+      DHIS2_ADMIN_USER: "${DHIS2_ADMIN_USER:-admin}"
+      DHIS2_ADMIN_PASSWORD: "${DHIS2_ADMIN_PASSWORD:-district}"
+    volumes:
+      - ./docker/trigger-analytics.sh:/opt/trigger-analytics.sh:ro
+    depends_on:
+      web:
+        condition: service_healthy
 
 volumes:
   db-dump: {}
