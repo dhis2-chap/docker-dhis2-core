@@ -8,14 +8,6 @@ Repository: https://github.com/dhis2-chap/docker-dhis2-core
 
 - Docker installed
 - Docker Compose available as `docker compose` or `docker-compose`
-- Environment variables set:
-  - `DB_USERNAME`
-  - `DB_PASSWORD`
-
-Optional:
-- `DB_NAME` (defaults to `dhis`)
-- `DB_HOSTNAME` (defaults to `db`)
-- `DHIS2_DB_DUMP_URL` (defaults to the Laos 2.42 climate demo database)
 
 ## .env setup
 
