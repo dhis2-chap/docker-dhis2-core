@@ -5,7 +5,7 @@
 
 services:
   web:
-    image: dhis2/core:2.42.4
+    image: dhis2/core:2.42.5
     volumes:
       - ./docker/log4j2.xml:/opt/dhis2/log4j2.xml:ro
       - ./docker/dhis.conf:/opt/dhis2/dhis.conf:ro
@@ -47,14 +47,15 @@ services:
 
   db-dump:
     image: alpine
-    # Patch DROP CONSTRAINT → DROP CONSTRAINT IF EXISTS so loading into a fresh DB
-    # doesn't abort when the constraint's table doesn't exist yet.
-    command: sh -c '[ -f dump.sql.gz ] && echo "dump.sql.gz exists" || (wget -O - "$$DHIS2_DB_DUMP_URL" | gunzip | sed "s/DROP CONSTRAINT \([a-zA-Z0-9_]*\);/DROP CONSTRAINT IF EXISTS \1;/g" | gzip > dump.sql.gz)'
+    # Downloads the dump and rewrites it so it loads cleanly into a fresh DB.
+    # See docker/prepare-dump.sh for the why.
+    command: sh /opt/prepare-dump.sh
     environment:
       DHIS2_DB_DUMP_URL: "${DHIS2_DB_DUMP_URL:-https://databases.dhis2.org/climate/laos/2.42/laos.sql.gz}"
     working_dir: /opt/dump
     volumes:
       - db-dump:/opt/dump
+      - ./docker/prepare-dump.sh:/opt/prepare-dump.sh:ro
 
 volumes:
   db-dump: {}
