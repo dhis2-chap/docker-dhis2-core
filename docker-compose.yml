@@ -1,0 +1,60 @@
+# Standalone DHIS2 + CHAP docker-compose
+# Copy this file (along with dhis-chap.conf and log4j2.xml) into the target repo.
+# Required environment variables: DB_USERNAME, DB_PASSWORD
+# Optional: DHIS2_DB_DUMP_URL (defaults to the Laos 2.42 climate demo database)
+
+services:
+  web:
+    image: dhis2/core:2.42.4
+    volumes:
+      - ./docker/log4j2.xml:/opt/dhis2/log4j2.xml:ro
+      - ./docker/dhis.conf:/opt/dhis2/dhis.conf:ro
+    environment:
+      DB_HOSTNAME: ${DB_HOSTNAME:-db}
+      DB_NAME: ${DB_NAME:-dhis}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: ghcr.io/baosystems/postgis:16-3.5
+    volumes:
+      - db-dump:/docker-entrypoint-initdb.d/
+    environment:
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_DB: ${DB_NAME:-dhis}
+      POSTGRES_PASSWORD: &postgres_password ${DB_PASSWORD}
+      PGPASSWORD: *postgres_password
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'psql --no-password --quiet --username $$POSTGRES_USER postgres://127.0.0.1/$$POSTGRES_DB -p 5432 --command "SELECT ''ok''" > /dev/null',
+        ]
+      start_period: 120s
+      interval: 1s
+      timeout: 3s
+      retries: 5
+    depends_on:
+      db-dump:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  db-dump:
+    image: alpine
+    # Patch DROP CONSTRAINT → DROP CONSTRAINT IF EXISTS so loading into a fresh DB
+    # doesn't abort when the constraint's table doesn't exist yet.
+    command: sh -c '[ -f dump.sql.gz ] && echo "dump.sql.gz exists" || (wget -O - "$$DHIS2_DB_DUMP_URL" | gunzip | sed "s/DROP CONSTRAINT \([a-zA-Z0-9_]*\);/DROP CONSTRAINT IF EXISTS \1;/g" | gzip > dump.sql.gz)'
+    environment:
+      DHIS2_DB_DUMP_URL: "${DHIS2_DB_DUMP_URL:-https://databases.dhis2.org/climate/laos/2.42/laos.sql.gz}"
+    working_dir: /opt/dump
+    volumes:
+      - db-dump:/opt/dump
+
+volumes:
+  db-dump: {}
