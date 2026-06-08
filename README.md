@@ -34,12 +34,6 @@ Docker Compose automatically loads `.env` from the project directory.
 From the repository root:
 
 ```bash
-DB_USERNAME=<username> DB_PASSWORD=<password> docker compose up -d
-```
-
-If your environment already exports `DB_USERNAME` and `DB_PASSWORD`, run:
-
-```bash
 docker compose up -d
 ```
 
