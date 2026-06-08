@@ -1,8 +1,8 @@
-# Standalone DHIS2 stack (web + PostGIS db + one-shot dump loader).
-#   docker compose up -d
+# Standalone DHIS2 stack (web + PostGIS db + dump loader + analytics trigger).
+#   make start            (or: docker compose up)
 # To also run chap-core alongside it, use the overlay that includes this file:
-#   docker compose -f compose.chap.yml up -d
-# Required environment variables: DB_USERNAME, DB_PASSWORD
+#   make start-chap       (or: docker compose -f compose.chap.yml up)
+# All values have working defaults; copy .env.example to .env only to change them.
 # Optional: DHIS2_DB_DUMP_URL (defaults to the Laos 2.42 climate demo database)
 
 services:
@@ -14,8 +14,8 @@ services:
     environment:
       DB_HOSTNAME: ${DB_HOSTNAME:-db}
       DB_NAME: ${DB_NAME:-dhis}
-      DB_USERNAME: ${DB_USERNAME}
-      DB_PASSWORD: ${DB_PASSWORD}
+      DB_USERNAME: ${DB_USERNAME:-dhis}
+      DB_PASSWORD: ${DB_PASSWORD:-dhis}
     ports:
       # Override DHIS2_PORT to coexist with another stack already on 8080.
       - "127.0.0.1:${DHIS2_PORT:-8080}:8080"
@@ -34,9 +34,9 @@ services:
     volumes:
       - db-dump:/docker-entrypoint-initdb.d/
     environment:
-      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_USER: ${DB_USERNAME:-dhis}
       POSTGRES_DB: ${DB_NAME:-dhis}
-      POSTGRES_PASSWORD: &postgres_password ${DB_PASSWORD}
+      POSTGRES_PASSWORD: &postgres_password ${DB_PASSWORD:-dhis}
       PGPASSWORD: *postgres_password
     healthcheck:
       test:

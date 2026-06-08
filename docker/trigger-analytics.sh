@@ -37,11 +37,16 @@ if [ -z "$TASK_ID" ]; then
 fi
 
 echo "Polling analytics task ${TASK_ID} ..."
-while true; do
+# Bounded so a vanished task or persistent bad response can't loop forever.
+# 360 * 10s = 60 min ceiling (the Laos demo finishes in minutes).
+attempt=0
+while [ "$attempt" -lt 360 ]; do
+  attempt=$((attempt + 1))
   sleep 10
   STATUS=$(curl -s -u "$AUTH" "${API}/system/tasks/ANALYTICS_TABLE/${TASK_ID}")
   if echo "$STATUS" | grep -q '"completed":true'; then
-    break
+    echo "Analytics tables completed successfully."
+    exit 0
   fi
   if echo "$STATUS" | grep -q '"level":"ERROR"'; then
     echo "Analytics failed!" >&2
@@ -50,4 +55,5 @@ while true; do
   fi
   echo "Still running ..."
 done
-echo "Analytics tables completed successfully."
+echo "Analytics did not complete within the timeout (task ${TASK_ID})." >&2
+exit 1

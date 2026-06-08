@@ -167,9 +167,10 @@ services:
   # Representative chapkit model service. It self-registers with chap-core on
   # start via the orchestrator URL below. Add more chapkit models the same way.
   chap-ewars:
-    image: ghcr.io/chap-models/chapkit_ewars_model:latest
+    # Pinned by digest for a reproducible v2.0.0 stack (the upstream tag is a
+    # moving :latest). This is chapkit_ewars_model:latest as of 2026-06-08.
+    image: ghcr.io/chap-models/chapkit_ewars_model@sha256:7839f1e10f242af7c46d3f524ed7fd0f30d98ee4fa14f78f8491e110c4b61856
     platform: linux/amd64
-    pull_policy: always
     # Internal only: it talks to chap-core over the compose network.
     expose:
       - "8000"

@@ -9,6 +9,11 @@ CHAP_FILE := compose.chap.yml
 # The overlay `include`s compose.yml, so `-f $(CHAP_FILE)` controls the whole
 # DHIS2 + chap-core stack under the same compose project.
 
+# Admin used by the `route` diagnostic; override on the CLI if you changed them,
+# e.g. `DHIS2_ADMIN_PASSWORD=secret make route`.
+DHIS2_ADMIN_USER     ?= admin
+DHIS2_ADMIN_PASSWORD ?= district
+
 # ==============================================================================
 # Targets
 # ==============================================================================
@@ -36,24 +41,26 @@ help:
 	@echo "chap-core itself stays internal — DHIS2 reaches it via the 'chap' route."
 
 # --- start: DHIS2 only --- (foreground; Ctrl+C to stop)
+# --remove-orphans so switching from the chap stack to DHIS2-only actually stops
+# the chap containers (both share one compose project).
 start:
 	@echo ">>> Starting DHIS2 (compose.yml) — Ctrl+C to stop"
-	@$(COMPOSE) up
+	@$(COMPOSE) up --remove-orphans
 
 start-force:
 	@echo ">>> Recreating DHIS2 from scratch (removing volumes) — Ctrl+C to stop"
-	@$(COMPOSE) down -v
-	@$(COMPOSE) up
+	@$(COMPOSE) down -v --remove-orphans
+	@$(COMPOSE) up --remove-orphans
 
 # --- start: DHIS2 + chap-core --- (foreground; Ctrl+C to stop)
 start-chap:
 	@echo ">>> Starting DHIS2 + chap-core (compose.chap.yml) — Ctrl+C to stop"
-	@$(COMPOSE) -f $(CHAP_FILE) up
+	@$(COMPOSE) -f $(CHAP_FILE) up --remove-orphans
 
 start-chap-force:
 	@echo ">>> Recreating DHIS2 + chap-core from scratch (removing volumes) — Ctrl+C to stop"
-	@$(COMPOSE) -f $(CHAP_FILE) down -v
-	@$(COMPOSE) -f $(CHAP_FILE) up
+	@$(COMPOSE) -f $(CHAP_FILE) down -v --remove-orphans
+	@$(COMPOSE) -f $(CHAP_FILE) up --remove-orphans
 
 # --- manage (operate on the whole project, chap services included) ---
 clean:
@@ -66,11 +73,13 @@ ps:
 logs:
 	@$(COMPOSE) -f $(CHAP_FILE) logs -f
 
+# Runs curl inside the web container, so it uses DHIS2's internal port and the
+# compose network regardless of the published DHIS2_PORT.
 route:
 	@echo ">>> chap route in DHIS2:"
-	@curl -s -u admin:district "http://127.0.0.1:$${DHIS2_PORT:-8080}/api/routes.json?filter=code:eq:chap&fields=id,code,url"; echo
+	@$(COMPOSE) -f $(CHAP_FILE) exec -T web curl -s -u "$(DHIS2_ADMIN_USER):$(DHIS2_ADMIN_PASSWORD)" "http://localhost:8080/api/routes.json?filter=code:eq:chap&fields=id,code,url"; echo
 	@echo ">>> proxy probe (DHIS2 -> chap):"
-	@curl -s -u admin:district "http://127.0.0.1:$${DHIS2_PORT:-8080}/api/routes/chap/run/health"; echo
+	@$(COMPOSE) -f $(CHAP_FILE) exec -T web curl -s -u "$(DHIS2_ADMIN_USER):$(DHIS2_ADMIN_PASSWORD)" "http://localhost:8080/api/routes/chap/run/health"; echo
 
 # ==============================================================================
 # Default

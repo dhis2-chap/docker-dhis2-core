@@ -11,17 +11,19 @@ Repository: https://github.com/dhis2-chap/docker-dhis2-core
 ## Prerequisites
 
 - Docker installed
-- Docker Compose available as `docker compose` or `docker-compose`
+- Docker Compose v2.20+ (the `docker compose` plugin; the chap overlay uses the
+  `include` directive, which legacy `docker-compose` does not support)
+- `make` (optional, but the documented commands use it)
 
-## .env setup
+## .env setup (optional)
 
-Copy the provided .env.example file into `.env` in the repository root:
+Every value has a working default baked into the compose files, so the stack runs
+without a `.env`. Create one only to change credentials or published ports — copy the
+template and edit:
 
 ```bash
 cp .env.example .env
 ```
-
-You can leave the example values as-is or update them as desired.
 
 Docker Compose automatically loads `.env` from the project directory.
 
@@ -36,8 +38,8 @@ make start            # DHIS2 only
 
 This starts the DHIS2-only stack (`compose.yml`):
 
-- `web` - DHIS2 application (the only service published to the host)
-- `db` - PostGIS database service (internal)
+- `web` - DHIS2 application (published on `127.0.0.1:8080`)
+- `db` - PostGIS database (published on `127.0.0.1:15432` for psql/DBeaver)
 - `db-dump` - one-shot: downloads and prepares the database dump, then exits
 - `analytics-trigger` - one-shot: after DHIS2 is healthy, generates the `analytics_*`
   tables (needed by the Data Visualizer, Climate app, and CHAP), then exits
@@ -113,13 +115,13 @@ make start-chap
 # equivalent to: docker compose -f compose.chap.yml up   (add -d to detach)
 ```
 
-This adds, on top of the DHIS2 services (none of these publish a host port — they
-all live on the internal Compose network):
+This adds, on top of the DHIS2 services:
 
-- `chap` - chap-core REST API (reached by DHIS2 at `http://chap:8000`)
+- `chap` - chap-core REST API (internal; reached by DHIS2 at `http://chap:8000`)
 - `chap-worker` - Celery worker that runs the models (INLA/R baked in)
-- `chap-redis` / `chap-postgres` - broker and database
-- `chap-ewars` - EWARS chapkit model; self-registers with chap on startup
+- `chap-redis` - broker (internal)
+- `chap-postgres` - chap database (published on `127.0.0.1:15433` for psql/DBeaver)
+- `chap-ewars` - EWARS chapkit model; self-registers with chap on startup (internal)
 - `chap-route-init` - one-shot that wires up the DHIS2 → chap route, then exits
 
 ### How DHIS2 talks to chap
