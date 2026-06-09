@@ -1,6 +1,8 @@
 # Standalone DHIS2 stack: dhis2-web + dhis2-db (PostGIS) + dump loader + job reset
-# + analytics. All DHIS2 services are prefixed "dhis2-"; the chap overlay adds
-# "chap-*" services (see compose.chap.yml).
+# + analytics + the chap route one-shot. All DHIS2 services are prefixed "dhis2-";
+# the chap overlay adds the chap-core "chap-*" services (see compose.chap.yml).
+# chap-route-init lives here (not the overlay) so plain `make start` repoints the
+# demo dump's "chap" route at a locally reachable chap instead of the stale remote.
 #   make start            (or: docker compose up)
 # To also run chap-core alongside it, use the overlay that includes this file:
 #   make start-chap       (or: docker compose -f compose.chap.yml up)
@@ -18,6 +20,12 @@ services:
       DB_NAME: ${DHIS2_DB_NAME:-dhis}
       DB_USERNAME: ${DHIS2_DB_USER:-dhis}
       DB_PASSWORD: ${DHIS2_DB_PASSWORD:-dhis}
+    # Lets the "chap" route resolve host.docker.internal (a chap-core you run from
+    # source on the host) when this DHIS2-only stack is used. Automatic on Docker
+    # Desktop; this makes it work on Linux too. Harmless under the chap overlay,
+    # where the route targets the bundled chap service instead.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       # Override DHIS2_PORT to coexist with another stack already on 8080.
       - "127.0.0.1:${DHIS2_PORT:-8080}:8080"
@@ -118,6 +126,31 @@ services:
       DHIS2_ADMIN_PASSWORD: "${DHIS2_ADMIN_PASSWORD:-district}"
     volumes:
       - ./docker/trigger-analytics.sh:/opt/trigger-analytics.sh:ro
+    depends_on:
+      dhis2-web:
+        condition: service_healthy
+
+  # One-shot: register/repoint the DHIS2 Route (code "chap") that reverse-proxies
+  # DHIS2 -> chap-core. Runs on every start. The climate demo dump ships a "chap"
+  # route aimed at a remote CHAP server; this repoints it at a locally reachable
+  # chap so the Modelling App works without manual fixup. Idempotent (no-op once it
+  # already matches) — see docker/create-chap-route.sh.
+  #
+  # In this DHIS2-only stack the default target is host.docker.internal:8000, i.e. a
+  # chap-core you run from source on the host. Override CHAP_ROUTE_URL if your local
+  # chap is on a different host port. The chap overlay (compose.chap.yml) overrides
+  # this to the bundled chap service (http://chap:8000/**).
+  chap-route-init:
+    image: alpine
+    restart: "no"
+    command: sh /opt/create-chap-route.sh
+    environment:
+      DHIS2_BASE_URL: "http://dhis2-web:8080"
+      DHIS2_ADMIN_USER: "${DHIS2_ADMIN_USER:-admin}"
+      DHIS2_ADMIN_PASSWORD: "${DHIS2_ADMIN_PASSWORD:-district}"
+      CHAP_ROUTE_URL: "${CHAP_ROUTE_URL:-http://host.docker.internal:8000/**}"
+    volumes:
+      - ./docker/create-chap-route.sh:/opt/create-chap-route.sh:ro
     depends_on:
       dhis2-web:
         condition: service_healthy

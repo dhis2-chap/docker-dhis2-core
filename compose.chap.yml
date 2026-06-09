@@ -153,17 +153,13 @@ services:
       - "127.0.0.1:${CHAP_DB_PORT:-15433}:5432"
 
   # ----- one-shot: register the DHIS2 Route that proxies DHIS2 -> chap -----
+  # The base stack (compose.yml) already defines chap-route-init; here we only
+  # override it to target the bundled chap service (instead of the host's
+  # host.docker.internal) and to wait for chap to be healthy first. Image, command
+  # and the script mount are inherited from the base service.
   chap-route-init:
-    image: alpine
-    restart: "no"
-    command: sh /opt/create-chap-route.sh
     environment:
-      DHIS2_BASE_URL: "http://dhis2-web:8080"
-      DHIS2_ADMIN_USER: "${DHIS2_ADMIN_USER:-admin}"
-      DHIS2_ADMIN_PASSWORD: "${DHIS2_ADMIN_PASSWORD:-district}"
       CHAP_ROUTE_URL: "http://chap:8000/**"
-    volumes:
-      - ./docker/create-chap-route.sh:/opt/create-chap-route.sh:ro
     depends_on:
       dhis2-web:
         condition: service_healthy
@@ -174,9 +170,10 @@ services:
   # Representative chapkit model service. It self-registers with chap-core on
   # start via the orchestrator URL below. Add more chapkit models the same way.
   chap-ewars:
-    # Pinned by digest for a reproducible v2.0.0 stack (the upstream tag is a
-    # moving :latest). This is chapkit_ewars_model:latest as of 2026-06-08.
-    image: ghcr.io/chap-models/chapkit_ewars_model@sha256:7839f1e10f242af7c46d3f524ed7fd0f30d98ee4fa14f78f8491e110c4b61856
+    # Track the upstream :latest so the model doesn't go stale. pull_policy: always
+    # so each `up` refreshes it (the tag is a moving target).
+    image: ghcr.io/chap-models/chapkit_ewars_model:latest
+    pull_policy: always
     platform: linux/amd64
     # Internal only: it talks to chap-core over the compose network.
     expose:

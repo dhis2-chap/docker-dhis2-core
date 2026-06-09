@@ -54,6 +54,10 @@ This starts the DHIS2-only stack (`compose.yml`):
   analytics. Runs on every start
 - `dhis2-analytics` - one-shot: after DHIS2 is healthy, generates the `analytics_*`
   tables (needed by the Data Visualizer, Climate app, and CHAP), then exits
+- `chap-route-init` - one-shot: repoints the demo dump's `chap` route (which ships
+  aimed at a remote CHAP server) at `host.docker.internal:8000` — i.e. a chap-core you
+  run **from source on the host**. Set `CHAP_ROUTE_URL` to override the target. (The
+  chap overlay points it at the bundled `chap` service instead — see below.)
 
 First startup takes a few minutes: the dump loads, DHIS2 migrates and boots, then
 `analytics-trigger` populates analytics before exiting. Then open DHIS2 at:
@@ -146,10 +150,16 @@ All access to chap-core goes **through DHIS2**, via a DHIS2 [Route](https://docs
 itself has **no authentication**, so it is never published to the host — DHIS2 is the
 only entry point, and it enforces auth.
 
-`chap-route-init` sets this up automatically once DHIS2 is healthy. It is
-self-correcting: the climate demo dumps ship a `chap` route aimed at an external CHAP
-server, so the one-shot **repoints** it at the local chap rather than leaving the stale
-target in place. Verify the route proxies through:
+`chap-route-init` sets this up automatically once DHIS2 is healthy (it runs in both
+stacks). It is self-correcting: the climate demo dumps ship a `chap` route aimed at an
+external CHAP server, so the one-shot **repoints** it rather than leaving the stale
+target in place. The target depends on the stack:
+
+- `make start` (DHIS2 only) → `http://host.docker.internal:8000/**` (a chap-core you
+  run from source on the host; override with `CHAP_ROUTE_URL`).
+- `make start-chap` (overlay) → `http://chap:8000/**` (the bundled chap service).
+
+Verify the route proxies through:
 
 ```bash
 curl -u admin:district http://127.0.0.1:8080/api/routes/chap/run/health
@@ -185,7 +195,9 @@ Both databases are published on `127.0.0.1` so you can browse the data with psql
 
 ### Notes
 
-- The chap images are pinned to the `v2.0.0` tag (note the leading `v`).
+- The chap-core and chap-worker images are pinned to the `v2.0.0` tag (note the leading
+  `v`). The EWARS chapkit model tracks `:latest` (pulled on every `up`) so it doesn't go
+  stale.
 - To stop and remove the chap-core volumes as well: `docker compose -f compose.chap.yml down -v`.
 
 ## Notes
