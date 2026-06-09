@@ -73,7 +73,7 @@ Published on the host (env-overridable); EWARS and redis stay internal:
 | Var | Service | Bind | Default | |
 |-----|---------|------|---------|--|
 | `DHIS2_PORT` | DHIS2 web | `127.0.0.1` | `8080` | UI / API |
-| `CHAP_PORT` | chap-core | all interfaces | `8000` | API + `/docs` (**no auth** — see below) |
+| `CHAP_PORT` | chap-core | `127.0.0.1` | `8000` | API + `/docs` (**no auth**) |
 | `DHIS2_DB_PORT` | DHIS2 PostGIS | `127.0.0.1` | `15432` | browse with psql |
 | `CHAP_DB_PORT` | chap Postgres | `127.0.0.1` | `15433` | browse with psql |
 
@@ -84,10 +84,9 @@ clash with other services already running on this machine:
 DHIS2_PORT=8081 CHAP_PORT=8001 make start-chap
 ```
 
-chap-core has **no authentication** and `CHAP_PORT` binds all interfaces. On a shared or
-untrusted network, restrict it (prefix `127.0.0.1:` on the `chap` service's `ports:` in
-`compose.chap.yml`) or remove the mapping to keep chap internal — DHIS2 still reaches it
-over the Compose network via the `chap` route either way.
+chap-core has **no authentication**, so `CHAP_PORT` binds `127.0.0.1` (loopback only, like
+the DBs). Remove the mapping to keep chap fully internal — DHIS2 still reaches it over the
+Compose network via the `chap` route either way.
 
 Connect a SQL client to the data after `make start-chap`:
 
@@ -164,8 +163,7 @@ The manual equivalent (e.g. if you recreate it by hand) is a `POST`/`PUT` to
 
 chap-core is published on the host at `CHAP_PORT` (default `8000`), so its Swagger UI is
 at [http://localhost:8000/docs](http://localhost:8000/docs) and the API at
-`http://localhost:8000/...`. (No auth — see the warning under
-[Ports & databases](#ports--databases).)
+`http://localhost:8000/...`. (No auth; bound to `127.0.0.1`.)
 
 To instead serve the docs **through the DHIS2 route** at
 `http://localhost:8080/api/routes/chap/run/docs`, uncomment the `CHAP_ROOT_PATH` line on
@@ -192,9 +190,9 @@ Both databases are published on `127.0.0.1` so you can browse the data with psql
 
 ## Notes
 
-- Published host ports — DHIS2 web, chap-core, and both databases — are env-overridable
-  (see [Ports & databases](#ports--databases)). DHIS2 and the DBs bind `127.0.0.1`;
-  chap binds all interfaces (no auth). EWARS and redis are internal to the Compose network.
+- Published host ports — DHIS2 web, chap-core, and both databases — bind `127.0.0.1` and
+  are env-overridable (see [Ports & databases](#ports--databases)). EWARS and redis are
+  internal to the Compose network.
 - The `db-dump` service downloads and patches the dump file into the named volume only once; deleting the volume forces it to re-download.
 - `analytics-trigger` runs the analytics export on first boot; it re-runs on every `up`
   (cheap if already current). DHIS2 needs a few GB of RAM for the populate phase — if

@@ -51,14 +51,13 @@ services:
         target: /data/logs
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    # Published on the host so you can hit the chap API and /docs directly.
-    # WARNING: chap-core has NO authentication, and this binds all interfaces — on a
-    # shared/untrusted network restrict it by prefixing "127.0.0.1:" (or remove the
-    # mapping to keep chap internal, reachable only via the DHIS2 route). DHIS2 still
-    # reaches it internally either way. Change CHAP_PORT if 8000 clashes with another
-    # service (see also DHIS2_PORT).
+    # Published on 127.0.0.1 so you can hit the chap API and /docs from the host.
+    # chap-core has no auth, so it stays on the loopback (like the DBs); remove this
+    # mapping to keep chap internal, reachable only via the DHIS2 route — DHIS2 reaches
+    # it over the compose network either way. Change CHAP_PORT if 8000 clashes (see
+    # also DHIS2_PORT).
     ports:
-      - "${CHAP_PORT:-8000}:8000"
+      - "127.0.0.1:${CHAP_PORT:-8000}:8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 5s
