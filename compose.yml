@@ -35,27 +35,6 @@ services:
 
   dhis2-db:
     image: ghcr.io/baosystems/postgis:16-3.5
-    # The DHIS2 DB is disposable (no persistent volume; wiped on `down -v` and
-    # reloaded from the dump), so durability is irrelevant — turn off fsync/WAL sync
-    # and give Postgres real working memory. This speeds up BOTH the dump restore
-    # and analytics: the per-year aggregations over ~1.2M data values otherwise
-    # spill the stock 4MB work_mem to disk (≈80s per year). Tuned for the demo.
-    command:
-      - postgres
-      - -c
-      - fsync=off
-      - -c
-      - synchronous_commit=off
-      - -c
-      - full_page_writes=off
-      - -c
-      - shared_buffers=1GB
-      - -c
-      - work_mem=64MB
-      - -c
-      - maintenance_work_mem=512MB
-      - -c
-      - max_parallel_workers_per_gather=4
     volumes:
       - dhis2-db-dump:/docker-entrypoint-initdb.d/
     environment:
