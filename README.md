@@ -149,6 +149,12 @@ curl -u admin:district http://127.0.0.1:8080/api/routes/chap/run/health
 The manual equivalent (e.g. if you recreate it by hand) is a `POST`/`PUT` to
 `/api/routes` with `{"name":"chap","code":"chap","url":"http://chap:8000/**"}`.
 
+chap's Swagger UI is reachable through the route at
+[http://localhost:8080/api/routes/chap/run/docs](http://localhost:8080/api/routes/chap/run/docs).
+This works because `CHAP_ROOT_PATH` (FastAPI `root_path`) is set to the route prefix
+`/api/routes/chap/run`, so the proxied docs fetch the OpenAPI spec through the route
+instead of from the DHIS2 origin.
+
 ### Using chap from the DHIS2 UI
 
 Install the [Modelling App](https://apps.dhis2.org/app/a29851f9-82a7-4ecd-8b2c-58e0f220bc75)

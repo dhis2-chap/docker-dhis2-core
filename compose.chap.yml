@@ -30,6 +30,10 @@ services:
       CELERY_BROKER: redis://chap-redis:6379/0
       CHAP_LOGS_DIR: /data/logs
       CHAP_RUNS_DIR: /data/runs
+      # FastAPI root_path so the proxied Swagger UI / OpenAPI work behind the DHIS2
+      # route: chap is reached at /api/routes/chap/run/** (e.g. .../run/docs), so it
+      # must advertise that prefix when generating /docs and openapi.json URLs.
+      CHAP_ROOT_PATH: ${CHAP_ROOT_PATH:-/api/routes/chap/run}
     read_only: true
     security_opt:
       - no-new-privileges:true
