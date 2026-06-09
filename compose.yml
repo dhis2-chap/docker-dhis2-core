@@ -14,10 +14,10 @@ services:
       - ./docker/log4j2.xml:/opt/dhis2/log4j2.xml:ro
       - ./docker/dhis.conf:/opt/dhis2/dhis.conf:ro
     environment:
-      DB_HOSTNAME: ${DB_HOSTNAME:-dhis2-db}
-      DB_NAME: ${DB_NAME:-dhis}
-      DB_USERNAME: ${DB_USERNAME:-dhis}
-      DB_PASSWORD: ${DB_PASSWORD:-dhis}
+      DB_HOSTNAME: ${DHIS2_DB_HOST:-dhis2-db}
+      DB_NAME: ${DHIS2_DB_NAME:-dhis}
+      DB_USERNAME: ${DHIS2_DB_USER:-dhis}
+      DB_PASSWORD: ${DHIS2_DB_PASSWORD:-dhis}
     ports:
       # Override DHIS2_PORT to coexist with another stack already on 8080.
       - "127.0.0.1:${DHIS2_PORT:-8080}:8080"
@@ -38,9 +38,9 @@ services:
     volumes:
       - dhis2-db-dump:/docker-entrypoint-initdb.d/
     environment:
-      POSTGRES_USER: ${DB_USERNAME:-dhis}
-      POSTGRES_DB: ${DB_NAME:-dhis}
-      POSTGRES_PASSWORD: &postgres_password ${DB_PASSWORD:-dhis}
+      POSTGRES_USER: ${DHIS2_DB_USER:-dhis}
+      POSTGRES_DB: ${DHIS2_DB_NAME:-dhis}
+      POSTGRES_PASSWORD: &postgres_password ${DHIS2_DB_PASSWORD:-dhis}
       PGPASSWORD: *postgres_password
     healthcheck:
       test:
@@ -88,10 +88,10 @@ services:
   dhis2-db-prep:
     image: ghcr.io/baosystems/postgis:16-3.5
     environment:
-      PGHOST: ${DB_HOSTNAME:-dhis2-db}
-      PGUSER: ${DB_USERNAME:-dhis}
-      PGPASSWORD: ${DB_PASSWORD:-dhis}
-      PGDATABASE: ${DB_NAME:-dhis}
+      PGHOST: ${DHIS2_DB_HOST:-dhis2-db}
+      PGUSER: ${DHIS2_DB_USER:-dhis}
+      PGPASSWORD: ${DHIS2_DB_PASSWORD:-dhis}
+      PGDATABASE: ${DHIS2_DB_NAME:-dhis}
     entrypoint: ["psql"]
     command:
       - "-v"

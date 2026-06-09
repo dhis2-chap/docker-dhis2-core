@@ -26,7 +26,7 @@ services:
     environment:
       REDIS_HOST: chap-redis
       REDIS_PORT: 6379
-      CHAP_DATABASE_URL: postgresql://${POSTGRES_USER:-chap}:${POSTGRES_PASSWORD:-chap}@chap-postgres:5432/${POSTGRES_DB:-chap_core}
+      CHAP_DATABASE_URL: postgresql://${CHAP_DB_USER:-chap}:${CHAP_DB_PASSWORD:-chap}@chap-postgres:5432/${CHAP_DB_NAME:-chap_core}
       CELERY_BROKER: redis://chap-redis:6379/0
       CHAP_LOGS_DIR: /data/logs
       CHAP_RUNS_DIR: /data/runs
@@ -79,7 +79,7 @@ services:
       IS_IN_DOCKER: 1
       REDIS_HOST: chap-redis
       REDIS_PORT: 6379
-      CHAP_DATABASE_URL: postgresql://${POSTGRES_USER:-chap}:${POSTGRES_PASSWORD:-chap}@chap-postgres:5432/${POSTGRES_DB:-chap_core}
+      CHAP_DATABASE_URL: postgresql://${CHAP_DB_USER:-chap}:${CHAP_DB_PASSWORD:-chap}@chap-postgres:5432/${CHAP_DB_NAME:-chap_core}
       CELERY_BROKER: redis://chap-redis:6379
       RENV_PATHS_ROOT: /data/renv
       UV_CACHE_DIR: /data/uv
@@ -132,11 +132,11 @@ services:
   chap-postgres:
     image: postgres:17
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-chap}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chap}
-      POSTGRES_DB: ${POSTGRES_DB:-chap_core}
+      POSTGRES_USER: ${CHAP_DB_USER:-chap}
+      POSTGRES_PASSWORD: ${CHAP_DB_PASSWORD:-chap}
+      POSTGRES_DB: ${CHAP_DB_NAME:-chap_core}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chap} -d ${POSTGRES_DB:-chap_core}"]
+      test: ["CMD-SHELL", "pg_isready -U ${CHAP_DB_USER:-chap} -d ${CHAP_DB_NAME:-chap_core}"]
       interval: 10s
       timeout: 10s
       retries: 10

@@ -25,6 +25,14 @@ cp .env.example .env
 
 Docker Compose automatically loads `.env` from the project directory.
 
+Database credentials use clean, prefixed variables (the compose files map them onto
+the images' own `DB_*` / `POSTGRES_*` names for you):
+
+| Variables | Default |
+|-----------|---------|
+| `DHIS2_DB_NAME` / `DHIS2_DB_USER` / `DHIS2_DB_PASSWORD` | `dhis` / `dhis` / `dhis` |
+| `CHAP_DB_NAME` / `CHAP_DB_USER` / `CHAP_DB_PASSWORD` | `chap_core` / `chap` / `chap` |
+
 ## Start services
 
 From the repository root (runs in the foreground — `Ctrl+C` to stop):
