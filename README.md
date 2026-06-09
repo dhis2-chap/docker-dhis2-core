@@ -6,8 +6,6 @@ Optionally, it can also bring up a [chap-core](https://github.com/dhis2-chap/cha
 `v2.0.0` server (plus a chapkit model) wired to DHIS2 through a DHIS2 Route — see
 [Running with chap-core](#running-with-chap-core).
 
-Repository: https://github.com/dhis2-chap/docker-dhis2-core
-
 ## Prerequisites
 
 - Docker installed
