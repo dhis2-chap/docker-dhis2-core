@@ -73,13 +73,13 @@ ps:
 logs:
 	@$(COMPOSE) -f $(CHAP_FILE) logs -f
 
-# Runs curl inside the web container, so it uses DHIS2's internal port and the
-# compose network regardless of the published DHIS2_PORT.
+# Runs curl inside the dhis2-web container, so it uses DHIS2's internal port and
+# the compose network regardless of the published DHIS2_PORT.
 route:
 	@echo ">>> chap route in DHIS2:"
-	@$(COMPOSE) -f $(CHAP_FILE) exec -T web curl -s -u "$(DHIS2_ADMIN_USER):$(DHIS2_ADMIN_PASSWORD)" "http://localhost:8080/api/routes.json?filter=code:eq:chap&fields=id,code,url"; echo
+	@$(COMPOSE) -f $(CHAP_FILE) exec -T dhis2-web curl -s -u "$(DHIS2_ADMIN_USER):$(DHIS2_ADMIN_PASSWORD)" "http://localhost:8080/api/routes.json?filter=code:eq:chap&fields=id,code,url"; echo
 	@echo ">>> proxy probe (DHIS2 -> chap):"
-	@$(COMPOSE) -f $(CHAP_FILE) exec -T web curl -s -u "$(DHIS2_ADMIN_USER):$(DHIS2_ADMIN_PASSWORD)" "http://localhost:8080/api/routes/chap/run/health"; echo
+	@$(COMPOSE) -f $(CHAP_FILE) exec -T dhis2-web curl -s -u "$(DHIS2_ADMIN_USER):$(DHIS2_ADMIN_PASSWORD)" "http://localhost:8080/api/routes/chap/run/health"; echo
 
 # ==============================================================================
 # Default

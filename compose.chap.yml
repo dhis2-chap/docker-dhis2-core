@@ -151,14 +151,14 @@ services:
     restart: "no"
     command: sh /opt/create-chap-route.sh
     environment:
-      DHIS2_BASE_URL: "http://web:8080"
+      DHIS2_BASE_URL: "http://dhis2-web:8080"
       DHIS2_ADMIN_USER: "${DHIS2_ADMIN_USER:-admin}"
       DHIS2_ADMIN_PASSWORD: "${DHIS2_ADMIN_PASSWORD:-district}"
       CHAP_ROUTE_URL: "http://chap:8000/**"
     volumes:
       - ./docker/create-chap-route.sh:/opt/create-chap-route.sh:ro
     depends_on:
-      web:
+      dhis2-web:
         condition: service_healthy
       chap:
         condition: service_healthy

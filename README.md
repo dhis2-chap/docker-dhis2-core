@@ -38,10 +38,15 @@ make start            # DHIS2 only
 
 This starts the DHIS2-only stack (`compose.yml`):
 
-- `web` - DHIS2 application (published on `127.0.0.1:8080`)
-- `db` - PostGIS database (published on `127.0.0.1:15432` for psql/DBeaver)
-- `db-dump` - one-shot: downloads and prepares the database dump, then exits
-- `analytics-trigger` - one-shot: after DHIS2 is healthy, generates the `analytics_*`
+- `dhis2-web` - DHIS2 application (published on `127.0.0.1:8080`)
+- `dhis2-db` - PostGIS database (published on `127.0.0.1:15432` for psql/DBeaver)
+- `dhis2-db-dump` - one-shot: downloads and prepares the database dump, then exits
+- `dhis2-db-prep` - one-shot (after the dump loads, before DHIS2 boots): runs
+  `ANALYZE` so the freshly restored DB has query-planner statistics (without it the
+  first analytics run takes ~20 min instead of ~20s), and resets any job left
+  `RUNNING` (e.g. from a `Ctrl+C` mid-analytics) back to `SCHEDULED` so it can't block
+  analytics. Runs on every start
+- `dhis2-analytics` - one-shot: after DHIS2 is healthy, generates the `analytics_*`
   tables (needed by the Data Visualizer, Climate app, and CHAP), then exits
 
 First startup takes a few minutes: the dump loads, DHIS2 migrates and boots, then

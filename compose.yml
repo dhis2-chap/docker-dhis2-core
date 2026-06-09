@@ -1,4 +1,6 @@
-# Standalone DHIS2 stack (web + PostGIS db + dump loader + analytics trigger).
+# Standalone DHIS2 stack: dhis2-web + dhis2-db (PostGIS) + dump loader + job reset
+# + analytics. All DHIS2 services are prefixed "dhis2-"; the chap overlay adds
+# "chap-*" services (see compose.chap.yml).
 #   make start            (or: docker compose up)
 # To also run chap-core alongside it, use the overlay that includes this file:
 #   make start-chap       (or: docker compose -f compose.chap.yml up)
@@ -6,13 +8,13 @@
 # Optional: DHIS2_DB_DUMP_URL (defaults to the Laos 2.42 climate demo database)
 
 services:
-  web:
+  dhis2-web:
     image: dhis2/core:2.42.5
     volumes:
       - ./docker/log4j2.xml:/opt/dhis2/log4j2.xml:ro
       - ./docker/dhis.conf:/opt/dhis2/dhis.conf:ro
     environment:
-      DB_HOSTNAME: ${DB_HOSTNAME:-db}
+      DB_HOSTNAME: ${DB_HOSTNAME:-dhis2-db}
       DB_NAME: ${DB_NAME:-dhis}
       DB_USERNAME: ${DB_USERNAME:-dhis}
       DB_PASSWORD: ${DB_PASSWORD:-dhis}
@@ -26,13 +28,36 @@ services:
       retries: 60
       start_period: 120s
     depends_on:
-      db:
+      dhis2-db:
         condition: service_healthy
+      dhis2-db-prep:
+        condition: service_completed_successfully
 
-  db:
+  dhis2-db:
     image: ghcr.io/baosystems/postgis:16-3.5
+    # The DHIS2 DB is disposable (no persistent volume; wiped on `down -v` and
+    # reloaded from the dump), so durability is irrelevant — turn off fsync/WAL sync
+    # and give Postgres real working memory. This speeds up BOTH the dump restore
+    # and analytics: the per-year aggregations over ~1.2M data values otherwise
+    # spill the stock 4MB work_mem to disk (≈80s per year). Tuned for the demo.
+    command:
+      - postgres
+      - -c
+      - fsync=off
+      - -c
+      - synchronous_commit=off
+      - -c
+      - full_page_writes=off
+      - -c
+      - shared_buffers=1GB
+      - -c
+      - work_mem=64MB
+      - -c
+      - maintenance_work_mem=512MB
+      - -c
+      - max_parallel_workers_per_gather=4
     volumes:
-      - db-dump:/docker-entrypoint-initdb.d/
+      - dhis2-db-dump:/docker-entrypoint-initdb.d/
     environment:
       POSTGRES_USER: ${DB_USERNAME:-dhis}
       POSTGRES_DB: ${DB_NAME:-dhis}
@@ -49,7 +74,7 @@ services:
       timeout: 3s
       retries: 5
     depends_on:
-      db-dump:
+      dhis2-db-dump:
         condition: service_completed_successfully
     # Published on 127.0.0.1 so a SQL client (DBeaver, psql) can browse the DHIS2
     # data. High default port (15432) to avoid clashing with a local postgres on
@@ -58,7 +83,7 @@ services:
     ports:
       - "127.0.0.1:${DHIS2_DB_PORT:-15432}:5432"
 
-  db-dump:
+  dhis2-db-dump:
     image: alpine
     # Downloads the dump and rewrites it so it loads cleanly into a fresh DB.
     # See docker/prepare-dump.sh for the why.
@@ -67,25 +92,56 @@ services:
       DHIS2_DB_DUMP_URL: "${DHIS2_DB_DUMP_URL:-https://databases.dhis2.org/climate/laos/2.42/laos.sql.gz}"
     working_dir: /opt/dump
     volumes:
-      - db-dump:/opt/dump
+      - dhis2-db-dump:/opt/dump
       - ./docker/prepare-dump.sh:/opt/prepare-dump.sh:ro
+
+  # One-shot DB prep that runs after the dump loads and before DHIS2 boots, on
+  # every start (start / start-chap / *-force). Two jobs:
+  #   1. ANALYZE — a freshly restored dump has NO planner statistics, so the
+  #      analytics aggregations get terrible query plans (the first analytics run
+  #      took ~20 MINUTES). A 1-second ANALYZE fixes the stats and brings analytics
+  #      down to ~20s. (Postgres autovacuum would eventually do this, but not before
+  #      the analytics trigger fires.)
+  #   2. Reset any job left flagged RUNNING by a previous hard stop (e.g. a Ctrl+C
+  #      mid-analytics) — DHIS2 won't start a new analytics run while one is RUNNING,
+  #      so a stale job would otherwise block it forever.
+  # ON_ERROR_STOP=0 so a not-yet-migrated DB (no jobconfiguration table) is a no-op.
+  dhis2-db-prep:
+    image: ghcr.io/baosystems/postgis:16-3.5
+    environment:
+      PGHOST: ${DB_HOSTNAME:-dhis2-db}
+      PGUSER: ${DB_USERNAME:-dhis}
+      PGPASSWORD: ${DB_PASSWORD:-dhis}
+      PGDATABASE: ${DB_NAME:-dhis}
+    entrypoint: ["psql"]
+    command:
+      - "-v"
+      - "ON_ERROR_STOP=0"
+      - "-c"
+      - "UPDATE jobconfiguration SET jobstatus='SCHEDULED' WHERE jobstatus='RUNNING';"
+      - "-c"
+      - "ANALYZE;"
+    depends_on:
+      dhis2-db:
+        condition: service_healthy
 
   # One-shot: a freshly loaded dump has no populated analytics_* tables, so the
   # Data Visualizer / Climate app / CHAP Modelling App see no data until analytics
   # runs. This kicks off the analytics export, polls it to completion, then exits.
-  analytics-trigger:
+  dhis2-analytics:
     image: alpine
     restart: on-failure
     command: sh /opt/trigger-analytics.sh
     environment:
-      DHIS2_BASE_URL: "http://web:8080"
+      DHIS2_ANALYTICS: "${DHIS2_ANALYTICS:-1}" # set 0 to skip analytics generation
+      DHIS2_BASE_URL: "http://dhis2-web:8080"
       DHIS2_ADMIN_USER: "${DHIS2_ADMIN_USER:-admin}"
       DHIS2_ADMIN_PASSWORD: "${DHIS2_ADMIN_PASSWORD:-district}"
     volumes:
       - ./docker/trigger-analytics.sh:/opt/trigger-analytics.sh:ro
     depends_on:
-      web:
+      dhis2-web:
         condition: service_healthy
 
 volumes:
-  db-dump: {}
+  dhis2-db-dump: {}
