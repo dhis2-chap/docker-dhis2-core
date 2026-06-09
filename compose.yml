@@ -55,7 +55,7 @@ services:
     depends_on:
       dhis2-db-dump:
         condition: service_completed_successfully
-    # Published on 127.0.0.1 so a SQL client (DBeaver, psql) can browse the DHIS2
+    # Published on 127.0.0.1 so a SQL client (e.g. psql) can browse the DHIS2
     # data. High default port (15432) to avoid clashing with a local postgres on
     # 5432; override DHIS2_DB_PORT per stack. Drop the "127.0.0.1:" prefix to let
     # other machines on the network connect.

@@ -30,10 +30,11 @@ services:
       CELERY_BROKER: redis://chap-redis:6379/0
       CHAP_LOGS_DIR: /data/logs
       CHAP_RUNS_DIR: /data/runs
-      # FastAPI root_path so the proxied Swagger UI / OpenAPI work behind the DHIS2
-      # route: chap is reached at /api/routes/chap/run/** (e.g. .../run/docs), so it
-      # must advertise that prefix when generating /docs and openapi.json URLs.
-      CHAP_ROOT_PATH: ${CHAP_ROOT_PATH:-/api/routes/chap/run}
+      # Uncomment to serve chap's Swagger UI THROUGH the DHIS2 route at
+      # /api/routes/chap/run/docs: this sets FastAPI's root_path so the proxied
+      # /docs and openapi.json resolve. Leave it commented when reaching chap
+      # directly on CHAP_PORT — then http://localhost:${CHAP_PORT:-8000}/docs just works.
+      # CHAP_ROOT_PATH: ${CHAP_ROOT_PATH:-/api/routes/chap/run}
     read_only: true
     security_opt:
       - no-new-privileges:true
@@ -50,11 +51,14 @@ services:
         target: /data/logs
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    # Internal only: DHIS2 reaches chap over the compose network via the "chap"
-    # route, and chap-core has no auth, so it is not published to the host. For
-    # ad-hoc debugging use `docker compose -f compose.chap.yml exec chap ...`.
-    expose:
-      - "8000"
+    # Published on the host so you can hit the chap API and /docs directly.
+    # WARNING: chap-core has NO authentication, and this binds all interfaces — on a
+    # shared/untrusted network restrict it by prefixing "127.0.0.1:" (or remove the
+    # mapping to keep chap internal, reachable only via the DHIS2 route). DHIS2 still
+    # reaches it internally either way. Change CHAP_PORT if 8000 clashes with another
+    # service (see also DHIS2_PORT).
+    ports:
+      - "${CHAP_PORT:-8000}:8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 5s
@@ -143,7 +147,7 @@ services:
       start_period: 40s
     volumes:
       - chap-db:/var/lib/postgresql/data
-    # Published on 127.0.0.1 so a SQL client (DBeaver, psql) can browse the chap
+    # Published on 127.0.0.1 so a SQL client (e.g. psql) can browse the chap
     # data. High default port (15433) to avoid clashes; override CHAP_DB_PORT per
     # stack. Drop the "127.0.0.1:" prefix to let other machines connect.
     ports:
