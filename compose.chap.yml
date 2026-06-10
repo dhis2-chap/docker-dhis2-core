@@ -1,12 +1,17 @@
 # DHIS2 + chap-core (v2.0.0) overlay.
 #
 # This file `include`s the standalone DHIS2 stack (compose.yml) and adds the
-# chap-core services, a chapkit model (EWARS), and a one-shot that registers a
-# DHIS2 Route pointing at chap. Bring up the whole thing with:
+# chap-core services plus a one-shot that registers a DHIS2 Route pointing at
+# chap. Bring up the whole thing with:
 #
 #   docker compose -f compose.chap.yml up -d
 #
 # (Plain `docker compose up -d` still runs DHIS2 only, via compose.yml.)
+#
+# This is the base chap stack: chap-core with its built-in models. Standalone
+# chapkit model services (e.g. EWARS) are opt-in overlays, mirroring chap-core
+# itself — see compose.ewars.yml, or the compose.chapkit.yml umbrella that pulls
+# in every model at once.
 #
 # chap-core has no authentication, so its port is only exposed on the host for
 # local inspection; DHIS2 reaches it internally at http://chap:8000 through the
@@ -163,25 +168,6 @@ services:
     depends_on:
       dhis2-web:
         condition: service_healthy
-      chap:
-        condition: service_healthy
-
-  # ----- chapkit model: EWARS -----
-  # Representative chapkit model service. It self-registers with chap-core on
-  # start via the orchestrator URL below. Add more chapkit models the same way.
-  chap-ewars:
-    # Track the upstream :latest so the model doesn't go stale. pull_policy: always
-    # so each `up` refreshes it (the tag is a moving target).
-    image: ghcr.io/chap-models/chapkit_ewars_model:latest
-    pull_policy: always
-    platform: linux/amd64
-    # Internal only: it talks to chap-core over the compose network.
-    expose:
-      - "8000"
-    environment:
-      # $$ -> literal $ ; chapkit reads "$register" as the self-registration path.
-      SERVICEKIT_ORCHESTRATOR_URL: http://chap:8000/v2/services/$$register
-    depends_on:
       chap:
         condition: service_healthy
 

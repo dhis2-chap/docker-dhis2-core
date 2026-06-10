@@ -1,0 +1,30 @@
+# chapkit model overlay: EWARS.
+#
+# A representative chapkit model service that self-registers with chap-core on
+# start (via the orchestrator URL below). It is NOT part of the base chap stack
+# (compose.chap.yml) — like chap-core itself, model services are opt-in overlays.
+#
+# Stack it on top of the chap stack:
+#
+#   docker compose -f compose.chap.yml -f compose.ewars.yml up -d
+#
+# Or use the compose.chapkit.yml umbrella to bring up every bundled model at
+# once. Add another model by copying this file. Requires Docker Compose v2.20+.
+
+services:
+  # ----- chapkit model: EWARS -----
+  chap-ewars:
+    # Track the upstream :latest so the model doesn't go stale. pull_policy: always
+    # so each `up` refreshes it (the tag is a moving target).
+    image: ghcr.io/chap-models/chapkit_ewars_model:latest
+    pull_policy: always
+    platform: linux/amd64
+    # Internal only: it talks to chap-core over the compose network.
+    expose:
+      - "8000"
+    environment:
+      # $$ -> literal $ ; chapkit reads "$register" as the self-registration path.
+      SERVICEKIT_ORCHESTRATOR_URL: http://chap:8000/v2/services/$$register
+    depends_on:
+      chap:
+        condition: service_healthy

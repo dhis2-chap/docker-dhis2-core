@@ -1,0 +1,18 @@
+# Umbrella overlay for all chapkit model services.
+#
+# `include`s the base chap stack (compose.chap.yml, which itself pulls in the
+# DHIS2 stack) plus every per-model overlay, so a single -f flag brings up
+# DHIS2 + chap-core + all bundled models:
+#
+#   docker compose -f compose.chapkit.yml up -d
+#
+# Add new chapkit-based models by creating a per-model overlay (like
+# compose.ewars.yml) and listing it here. Requires Docker Compose v2.20+ for the
+# `include` directive.
+
+include:
+  - compose.chap.yml
+  - compose.ewars.yml
+  # add more chapkit overlays here as models are converted
+  # - compose.multistep.yml
+  # - compose.chtorch.yml
