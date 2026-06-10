@@ -122,18 +122,21 @@ make clean
 
 ## Running with chap-core
 
-`compose.chap.yml` is an overlay that `include`s the DHIS2 stack above and adds a
-[chap-core](https://github.com/dhis2-chap/chap-core) `v2.0.0` server, its worker /
-broker / database, and a one-shot that creates the DHIS2 Route connecting the two. Like
-chap-core itself, this base stack ships chap-core with its built-in models; standalone
-[chapkit](https://github.com/dhis2-chap/chap-core) model services (e.g. EWARS) are
-opt-in overlays — see [Adding chapkit models](#adding-chapkit-models).
+`make start-chap` runs `compose.chapkit.yml`, the umbrella overlay for the whole chap
+stack. It `include`s, in layers:
 
-Bring up the base chap stack (DHIS2 + chap-core), foreground (`Ctrl+C` to stop):
+- `compose.chap.yml` — `include`s the DHIS2 stack above and adds a
+  [chap-core](https://github.com/dhis2-chap/chap-core) `v2.0.0` server, its worker /
+  broker / database, and a one-shot that creates the DHIS2 Route connecting the two.
+- `compose.ewars.yml` — the EWARS [chapkit](https://github.com/dhis2-chap/chap-core)
+  model. Each chapkit model lives in its own per-model overlay (mirroring chap-core's
+  own layout); add a model by copying this file and listing it in `compose.chapkit.yml`.
+
+Bring up everything (DHIS2 + chap-core + chapkit models), foreground (`Ctrl+C` to stop):
 
 ```bash
 make start-chap
-# equivalent to: docker compose -f compose.chap.yml up   (add -d to detach)
+# equivalent to: docker compose -f compose.chapkit.yml up   (add -d to detach)
 ```
 
 This adds, on top of the DHIS2 services:
@@ -142,27 +145,12 @@ This adds, on top of the DHIS2 services:
 - `chap-worker` - Celery worker that runs the models (INLA/R baked in)
 - `chap-redis` - broker (internal)
 - `chap-postgres` - chap database (published on `127.0.0.1:15433` for psql)
+- `chap-ewars` - EWARS chapkit model; self-registers with chap on startup (internal)
 - `chap-route-init` - one-shot that wires up the DHIS2 → chap route, then exits
 
-### Adding chapkit models
-
-Standalone chapkit model services live in their own per-model overlays, mirroring
-chap-core's own layout. `compose.ewars.yml` defines the EWARS model, and
-`compose.chapkit.yml` is an umbrella that `include`s the base chap stack plus every
-per-model overlay. Bring up DHIS2 + chap-core + all bundled models at once:
-
-```bash
-make start-chapkit
-# equivalent to: docker compose -f compose.chapkit.yml up   (add -d to detach)
-```
-
-This adds, on top of the base chap services:
-
-- `chap-ewars` - EWARS chapkit model; self-registers with chap on startup (internal)
-
-To run a single model overlay instead of the full umbrella, stack it on the chap stack
-directly, e.g. `docker compose -f compose.chap.yml -f compose.ewars.yml up`. Add a new
-model by copying `compose.ewars.yml` and listing it in `compose.chapkit.yml`.
+To run chap-core without the chapkit models, use the base overlay directly:
+`docker compose -f compose.chap.yml up`. To run a single model, stack its overlay on the
+base, e.g. `docker compose -f compose.chap.yml -f compose.ewars.yml up`.
 
 ### How DHIS2 talks to chap
 
