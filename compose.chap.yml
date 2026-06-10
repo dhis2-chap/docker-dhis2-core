@@ -1,0 +1,194 @@
+# DHIS2 + chap-core (v2.0.0) overlay.
+#
+# This file `include`s the standalone DHIS2 stack (compose.yml) and adds the
+# chap-core services, a chapkit model (EWARS), and a one-shot that registers a
+# DHIS2 Route pointing at chap. Bring up the whole thing with:
+#
+#   docker compose -f compose.chap.yml up -d
+#
+# (Plain `docker compose up -d` still runs DHIS2 only, via compose.yml.)
+#
+# chap-core has no authentication, so its port is only exposed on the host for
+# local inspection; DHIS2 reaches it internally at http://chap:8000 through the
+# auto-created Route (code "chap").
+
+include:
+  - compose.yml
+
+services:
+  # ----- chap-core API -----
+  chap:
+    image: ghcr.io/dhis2-chap/chap-core:v2.0.0
+    platform: linux/amd64
+    # No container_name: the service name "chap" is already a network alias on the
+    # compose network, so the DHIS2 Route target http://chap:8000 resolves without
+    # claiming a global container name that could collide with other stacks.
+    environment:
+      REDIS_HOST: chap-redis
+      REDIS_PORT: 6379
+      CHAP_DATABASE_URL: postgresql://${CHAP_DB_USER:-chap}:${CHAP_DB_PASSWORD:-chap}@chap-postgres:5432/${CHAP_DB_NAME:-chap_core}
+      CELERY_BROKER: redis://chap-redis:6379/0
+      CHAP_LOGS_DIR: /data/logs
+      CHAP_RUNS_DIR: /data/runs
+      # Uncomment to serve chap's Swagger UI THROUGH the DHIS2 route at
+      # /api/routes/chap/run/docs: this sets FastAPI's root_path so the proxied
+      # /docs and openapi.json resolve. Leave it commented when reaching chap
+      # directly on CHAP_PORT — then http://localhost:${CHAP_PORT:-8000}/docs just works.
+      # CHAP_ROOT_PATH: ${CHAP_ROOT_PATH:-/api/routes/chap/run}
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    user: chap:chap
+    volumes:
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          size: 2000000000 # 2GB for runtime temp files (API service)
+      - type: volume
+        source: chap-logs
+        target: /data/logs
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Published on 127.0.0.1 so you can hit the chap API and /docs from the host.
+    # chap-core has no auth, so it stays on the loopback (like the DBs); remove this
+    # mapping to keep chap internal, reachable only via the DHIS2 route — DHIS2 reaches
+    # it over the compose network either way. Change CHAP_PORT if 8000 clashes (see
+    # also DHIS2_PORT).
+    ports:
+      - "127.0.0.1:${CHAP_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    depends_on:
+      chap-redis:
+        condition: service_started
+      chap-worker:
+        condition: service_started
+      chap-postgres:
+        condition: service_healthy
+
+  # ----- chap-core Celery worker (runs the models; INLA/R baked into the image) -----
+  chap-worker:
+    image: ghcr.io/dhis2-chap/chap-worker:v2.0.0
+    platform: linux/amd64
+    command: "/app/.venv/bin/celery -A chap_core.rest_api.celery_tasks worker --loglevel=info"
+    working_dir: /app
+    environment:
+      IS_IN_DOCKER: 1
+      REDIS_HOST: chap-redis
+      REDIS_PORT: 6379
+      CHAP_DATABASE_URL: postgresql://${CHAP_DB_USER:-chap}:${CHAP_DB_PASSWORD:-chap}@chap-postgres:5432/${CHAP_DB_NAME:-chap_core}
+      CELERY_BROKER: redis://chap-redis:6379
+      RENV_PATHS_ROOT: /data/renv
+      UV_CACHE_DIR: /data/uv
+      CHAP_LOGS_DIR: /data/logs
+      CHAP_RUNS_DIR: /data/runs
+      PYTENSOR_FLAGS: "base_compiledir=/data/pytensor"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    user: chap:chap
+    volumes:
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          size: 2000000000 # 2GB for runtime temp files (model execution)
+      - type: volume
+        source: chap-runs
+        target: /data/runs
+      - type: volume
+        source: chap-renv
+        target: /data/renv
+      - type: volume
+        source: chap-uv
+        target: /data/uv
+      - type: volume
+        source: chap-logs
+        target: /data/logs
+      - type: volume
+        source: chap-pytensor
+        target: /data/pytensor
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "/app/.venv/bin/celery -A chap_core.rest_api.celery_tasks inspect ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      chap-postgres:
+        condition: service_healthy
+
+  # ----- chap-core message broker -----
+  chap-redis:
+    image: valkey/valkey:8
+
+  # ----- chap-core database (internal only) -----
+  chap-postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${CHAP_DB_USER:-chap}
+      POSTGRES_PASSWORD: ${CHAP_DB_PASSWORD:-chap}
+      POSTGRES_DB: ${CHAP_DB_NAME:-chap_core}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CHAP_DB_USER:-chap} -d ${CHAP_DB_NAME:-chap_core}"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+    volumes:
+      - chap-db:/var/lib/postgresql/data
+    # Published on 127.0.0.1 so a SQL client (e.g. psql) can browse the chap
+    # data. High default port (15433) to avoid clashes; override CHAP_DB_PORT per
+    # stack. Drop the "127.0.0.1:" prefix to let other machines connect.
+    ports:
+      - "127.0.0.1:${CHAP_DB_PORT:-15433}:5432"
+
+  # ----- one-shot: register the DHIS2 Route that proxies DHIS2 -> chap -----
+  # The base stack (compose.yml) already defines chap-route-init; here we only
+  # override it to target the bundled chap service (instead of the host's
+  # host.docker.internal) and to wait for chap to be healthy first. Image, command
+  # and the script mount are inherited from the base service.
+  chap-route-init:
+    environment:
+      CHAP_ROUTE_URL: "http://chap:8000/**"
+    depends_on:
+      dhis2-web:
+        condition: service_healthy
+      chap:
+        condition: service_healthy
+
+  # ----- chapkit model: EWARS -----
+  # Representative chapkit model service. It self-registers with chap-core on
+  # start via the orchestrator URL below. Add more chapkit models the same way.
+  chap-ewars:
+    # Track the upstream :latest so the model doesn't go stale. pull_policy: always
+    # so each `up` refreshes it (the tag is a moving target).
+    image: ghcr.io/chap-models/chapkit_ewars_model:latest
+    pull_policy: always
+    platform: linux/amd64
+    # Internal only: it talks to chap-core over the compose network.
+    expose:
+      - "8000"
+    environment:
+      # $$ -> literal $ ; chapkit reads "$register" as the self-registration path.
+      SERVICEKIT_ORCHESTRATOR_URL: http://chap:8000/v2/services/$$register
+    depends_on:
+      chap:
+        condition: service_healthy
+
+volumes:
+  chap-db: {}
+  chap-logs: {}
+  chap-renv: {}
+  chap-uv: {}
+  chap-pytensor: {}
+  chap-runs: {}

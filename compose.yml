@@ -1,0 +1,159 @@
+# Standalone DHIS2 stack: dhis2-web + dhis2-db (PostGIS) + dump loader + job reset
+# + analytics + the chap route one-shot. All DHIS2 services are prefixed "dhis2-";
+# the chap overlay adds the chap-core "chap-*" services (see compose.chap.yml).
+# chap-route-init lives here (not the overlay) so plain `make start` repoints the
+# demo dump's "chap" route at a locally reachable chap instead of the stale remote.
+#   make start            (or: docker compose up)
+# To also run chap-core alongside it, use the overlay that includes this file:
+#   make start-chap       (or: docker compose -f compose.chap.yml up)
+# All values have working defaults; copy .env.example to .env only to change them.
+# Optional: DHIS2_DB_DUMP_URL (defaults to the Laos 2.42 climate demo database)
+
+services:
+  dhis2-web:
+    image: dhis2/core:2.42.5
+    volumes:
+      - ./docker/log4j2.xml:/opt/dhis2/log4j2.xml:ro
+      - ./docker/dhis.conf:/opt/dhis2/dhis.conf:ro
+    environment:
+      DB_HOSTNAME: ${DHIS2_DB_HOST:-dhis2-db}
+      DB_NAME: ${DHIS2_DB_NAME:-dhis}
+      DB_USERNAME: ${DHIS2_DB_USER:-dhis}
+      DB_PASSWORD: ${DHIS2_DB_PASSWORD:-dhis}
+    # Lets the "chap" route resolve host.docker.internal (a chap-core you run from
+    # source on the host) when this DHIS2-only stack is used. Automatic on Docker
+    # Desktop; this makes it work on Linux too. Harmless under the chap overlay,
+    # where the route targets the bundled chap service instead.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      # Override DHIS2_PORT to coexist with another stack already on 8080.
+      - "127.0.0.1:${DHIS2_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/dhis-web-login/index.html | grep -q 200"]
+      interval: 30s
+      timeout: 5s
+      retries: 60
+      start_period: 120s
+    depends_on:
+      dhis2-db:
+        condition: service_healthy
+      dhis2-db-prep:
+        condition: service_completed_successfully
+
+  dhis2-db:
+    image: ghcr.io/baosystems/postgis:16-3.5
+    volumes:
+      - dhis2-db-dump:/docker-entrypoint-initdb.d/
+    environment:
+      POSTGRES_USER: ${DHIS2_DB_USER:-dhis}
+      POSTGRES_DB: ${DHIS2_DB_NAME:-dhis}
+      POSTGRES_PASSWORD: &postgres_password ${DHIS2_DB_PASSWORD:-dhis}
+      PGPASSWORD: *postgres_password
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'psql --no-password --quiet --username $$POSTGRES_USER postgres://127.0.0.1/$$POSTGRES_DB -p 5432 --command "SELECT ''ok''" > /dev/null',
+        ]
+      start_period: 120s
+      interval: 1s
+      timeout: 3s
+      retries: 5
+    depends_on:
+      dhis2-db-dump:
+        condition: service_completed_successfully
+    # Published on 127.0.0.1 so a SQL client (e.g. psql) can browse the DHIS2
+    # data. High default port (15432) to avoid clashing with a local postgres on
+    # 5432; override DHIS2_DB_PORT per stack. Drop the "127.0.0.1:" prefix to let
+    # other machines on the network connect.
+    ports:
+      - "127.0.0.1:${DHIS2_DB_PORT:-15432}:5432"
+
+  dhis2-db-dump:
+    image: alpine
+    # Downloads the dump and rewrites it so it loads cleanly into a fresh DB.
+    # See docker/prepare-dump.sh for the why.
+    command: sh /opt/prepare-dump.sh
+    environment:
+      DHIS2_DB_DUMP_URL: "${DHIS2_DB_DUMP_URL:-https://databases.dhis2.org/climate/laos/2.42/laos.sql.gz}"
+    working_dir: /opt/dump
+    volumes:
+      - dhis2-db-dump:/opt/dump
+      - ./docker/prepare-dump.sh:/opt/prepare-dump.sh:ro
+
+  # One-shot DB prep that runs after the dump loads and before DHIS2 boots, on
+  # every start (start / start-chap / *-force). Two jobs:
+  #   1. ANALYZE — a freshly restored dump has NO planner statistics, so the
+  #      analytics aggregations get terrible query plans (the first analytics run
+  #      took ~20 MINUTES). A 1-second ANALYZE fixes the stats and brings analytics
+  #      down to ~20s. (Postgres autovacuum would eventually do this, but not before
+  #      the analytics trigger fires.)
+  #   2. Reset any job left flagged RUNNING by a previous hard stop (e.g. a Ctrl+C
+  #      mid-analytics) — DHIS2 won't start a new analytics run while one is RUNNING,
+  #      so a stale job would otherwise block it forever.
+  # ON_ERROR_STOP=0 so a not-yet-migrated DB (no jobconfiguration table) is a no-op.
+  dhis2-db-prep:
+    image: ghcr.io/baosystems/postgis:16-3.5
+    environment:
+      PGHOST: ${DHIS2_DB_HOST:-dhis2-db}
+      PGUSER: ${DHIS2_DB_USER:-dhis}
+      PGPASSWORD: ${DHIS2_DB_PASSWORD:-dhis}
+      PGDATABASE: ${DHIS2_DB_NAME:-dhis}
+    entrypoint: ["psql"]
+    command:
+      - "-v"
+      - "ON_ERROR_STOP=0"
+      - "-c"
+      - "UPDATE jobconfiguration SET jobstatus='SCHEDULED' WHERE jobstatus='RUNNING';"
+      - "-c"
+      - "ANALYZE;"
+    depends_on:
+      dhis2-db:
+        condition: service_healthy
+
+  # One-shot: a freshly loaded dump has no populated analytics_* tables, so the
+  # Data Visualizer / Climate app / CHAP Modelling App see no data until analytics
+  # runs. This kicks off the analytics export, polls it to completion, then exits.
+  dhis2-analytics:
+    image: alpine
+    restart: on-failure
+    command: sh /opt/trigger-analytics.sh
+    environment:
+      DHIS2_ANALYTICS: "${DHIS2_ANALYTICS:-1}" # set 0 to skip analytics generation
+      DHIS2_BASE_URL: "http://dhis2-web:8080"
+      DHIS2_ADMIN_USER: "${DHIS2_ADMIN_USER:-admin}"
+      DHIS2_ADMIN_PASSWORD: "${DHIS2_ADMIN_PASSWORD:-district}"
+    volumes:
+      - ./docker/trigger-analytics.sh:/opt/trigger-analytics.sh:ro
+    depends_on:
+      dhis2-web:
+        condition: service_healthy
+
+  # One-shot: register/repoint the DHIS2 Route (code "chap") that reverse-proxies
+  # DHIS2 -> chap-core. Runs on every start. The climate demo dump ships a "chap"
+  # route aimed at a remote CHAP server; this repoints it at a locally reachable
+  # chap so the Modelling App works without manual fixup. Idempotent (no-op once it
+  # already matches) — see docker/create-chap-route.sh.
+  #
+  # In this DHIS2-only stack the default target is host.docker.internal:8000, i.e. a
+  # chap-core you run from source on the host. Override CHAP_ROUTE_URL if your local
+  # chap is on a different host port. The chap overlay (compose.chap.yml) overrides
+  # this to the bundled chap service (http://chap:8000/**).
+  chap-route-init:
+    image: alpine
+    restart: "no"
+    command: sh /opt/create-chap-route.sh
+    environment:
+      DHIS2_BASE_URL: "http://dhis2-web:8080"
+      DHIS2_ADMIN_USER: "${DHIS2_ADMIN_USER:-admin}"
+      DHIS2_ADMIN_PASSWORD: "${DHIS2_ADMIN_PASSWORD:-district}"
+      CHAP_ROUTE_URL: "${CHAP_ROUTE_URL:-http://host.docker.internal:8000/**}"
+    volumes:
+      - ./docker/create-chap-route.sh:/opt/create-chap-route.sh:ro
+    depends_on:
+      dhis2-web:
+        condition: service_healthy
+
+volumes:
+  dhis2-db-dump: {}
