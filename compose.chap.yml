@@ -1,4 +1,4 @@
-# DHIS2 + chap-core (v2.0.0) overlay.
+# DHIS2 + chap-core (v2.1.0) overlay.
 #
 # This file `include`s the standalone DHIS2 stack (compose.yml) and adds the
 # chap-core services plus a one-shot that registers a DHIS2 Route pointing at
@@ -23,7 +23,7 @@ include:
 services:
   # ----- chap-core API -----
   chap:
-    image: ghcr.io/dhis2-chap/chap-core:v2.0.0
+    image: ghcr.io/dhis2-chap/chap-core:v2.1.0
     platform: linux/amd64
     # No container_name: the service name "chap" is already a network alias on the
     # compose network, so the DHIS2 Route target http://chap:8000 resolves without
@@ -79,7 +79,7 @@ services:
 
   # ----- chap-core Celery worker (runs the models; INLA/R baked into the image) -----
   chap-worker:
-    image: ghcr.io/dhis2-chap/chap-worker:v2.0.0
+    image: ghcr.io/dhis2-chap/chap-worker:v2.1.0
     platform: linux/amd64
     command: "/app/.venv/bin/celery -A chap_core.rest_api.celery_tasks worker --loglevel=info"
     working_dir: /app
