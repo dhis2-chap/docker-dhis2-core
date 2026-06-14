@@ -1,0 +1,19 @@
+# Route override for the bundled chap stack.
+#
+# compose.yml defines chap-route-init pointing at a host-run chap
+# (host.docker.internal). When chap-core runs inside the stack, the DHIS2 "chap"
+# route must instead target the in-network chap service. This file is layered on
+# top of the chap/chapkit stack with a second `-f` flag (see the Makefile):
+#
+#   docker compose -f compose.chapkit.yml -f compose.chap-route.yml up -d
+#
+# `-f` file merging (unlike the `include:` directive used by the overlays)
+# deep-merges same-named services, so only the changed fields are listed here:
+# image, command and the script mount are inherited from compose.yml.
+services:
+  chap-route-init:
+    environment:
+      CHAP_ROUTE_URL: "http://chap:8000/**"
+    depends_on:
+      chap:
+        condition: service_healthy

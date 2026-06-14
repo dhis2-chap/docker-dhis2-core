@@ -8,8 +8,14 @@ COMPOSE   := docker compose
 CHAP_FILE := compose.chapkit.yml
 # compose.chapkit.yml is the umbrella for the whole chap stack: it `include`s
 # compose.chap.yml (which itself includes compose.yml — DHIS2 + chap-core) plus
-# every chapkit model overlay (e.g. compose.ewars.yml). So `-f $(CHAP_FILE)`
+# every chapkit model overlay (e.g. compose.ewars.yml). So `$(CHAP_FILES)`
 # drives the entire DHIS2 + chap-core + models stack under one compose project.
+#
+# compose.chap-route.yml is layered on top with a second `-f` to point the DHIS2
+# "chap" route at the bundled chap service. It can't live in the include graph:
+# `include` treats a same-named service as a conflict instead of deep-merging it,
+# whereas `-f` file stacking deep-merges. CHAP_FILES drives all chap-stack targets.
+CHAP_FILES := -f $(CHAP_FILE) -f compose.chap-route.yml
 
 # Admin used by the `route` diagnostic; override on the CLI if you changed them,
 # e.g. `DHIS2_ADMIN_PASSWORD=secret make route`.
@@ -57,31 +63,31 @@ start-force:
 # --- start: DHIS2 + chap-core (with chapkit models) --- (foreground; Ctrl+C to stop)
 start-chap:
 	@echo ">>> Starting DHIS2 + chap-core with chapkit models (compose.chapkit.yml) — Ctrl+C to stop"
-	@$(COMPOSE) -f $(CHAP_FILE) up --remove-orphans
+	@$(COMPOSE) $(CHAP_FILES) up --remove-orphans
 
 start-chap-force:
 	@echo ">>> Recreating DHIS2 + chap-core from scratch (removing volumes) — Ctrl+C to stop"
-	@$(COMPOSE) -f $(CHAP_FILE) down -v --remove-orphans
-	@$(COMPOSE) -f $(CHAP_FILE) up --remove-orphans
+	@$(COMPOSE) $(CHAP_FILES) down -v --remove-orphans
+	@$(COMPOSE) $(CHAP_FILES) up --remove-orphans
 
 # --- manage (operate on the whole project, chap + model services included) ---
 clean:
 	@echo ">>> Stopping and removing containers and volumes"
-	@$(COMPOSE) -f $(CHAP_FILE) down -v
+	@$(COMPOSE) $(CHAP_FILES) down -v
 
 ps:
-	@$(COMPOSE) -f $(CHAP_FILE) ps -a
+	@$(COMPOSE) $(CHAP_FILES) ps -a
 
 logs:
-	@$(COMPOSE) -f $(CHAP_FILE) logs -f
+	@$(COMPOSE) $(CHAP_FILES) logs -f
 
 # Runs curl inside the dhis2-web container, so it uses DHIS2's internal port and
 # the compose network regardless of the published DHIS2_PORT.
 route:
 	@echo ">>> chap route in DHIS2:"
-	@$(COMPOSE) -f $(CHAP_FILE) exec -T dhis2-web curl -s -u "$(DHIS2_ADMIN_USER):$(DHIS2_ADMIN_PASSWORD)" "http://localhost:8080/api/routes.json?filter=code:eq:chap&fields=id,code,url"; echo
+	@$(COMPOSE) $(CHAP_FILES) exec -T dhis2-web curl -s -u "$(DHIS2_ADMIN_USER):$(DHIS2_ADMIN_PASSWORD)" "http://localhost:8080/api/routes.json?filter=code:eq:chap&fields=id,code,url"; echo
 	@echo ">>> proxy probe (DHIS2 -> chap):"
-	@$(COMPOSE) -f $(CHAP_FILE) exec -T dhis2-web curl -s -u "$(DHIS2_ADMIN_USER):$(DHIS2_ADMIN_PASSWORD)" "http://localhost:8080/api/routes/chap/run/health"; echo
+	@$(COMPOSE) $(CHAP_FILES) exec -T dhis2-web curl -s -u "$(DHIS2_ADMIN_USER):$(DHIS2_ADMIN_PASSWORD)" "http://localhost:8080/api/routes/chap/run/health"; echo
 
 # ==============================================================================
 # Default
