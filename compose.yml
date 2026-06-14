@@ -43,6 +43,11 @@ services:
 
   dhis2-db:
     image: ghcr.io/baosystems/postgis:16-3.5
+    # Docker defaults a container's /dev/shm to 64MB. Analytics generation runs
+    # many parallel vacuum/sort operations that each grab a POSIX shared-memory
+    # segment; together they overflow 64MB and Postgres fails with
+    # "could not resize shared memory segment ... No space left on device".
+    shm_size: 1gb
     volumes:
       - dhis2-db-dump:/docker-entrypoint-initdb.d/
     environment:
