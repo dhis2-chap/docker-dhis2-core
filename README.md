@@ -132,11 +132,19 @@ stack. It `include`s, in layers:
   model. Each chapkit model lives in its own per-model overlay (mirroring chap-core's
   own layout); add a model by copying this file and listing it in `compose.chapkit.yml`.
 
+On top of that umbrella, `make start-chap` layers one more file with a second `-f`:
+
+- `compose.chap-route.yml` — repoints the DHIS2 `chap` route at the bundled `chap`
+  service (`http://chap:8000`). This **cannot** live inside the `include` graph: `include`
+  rejects a same-named service as a conflict, whereas `-f` file stacking deep-merges it.
+  See [How DHIS2 talks to chap](#how-dhis2-talks-to-chap) for why the override is needed.
+
 Bring up everything (DHIS2 + chap-core + chapkit models), foreground (`Ctrl+C` to stop):
 
 ```bash
 make start-chap
-# equivalent to: docker compose -f compose.chapkit.yml up   (add -d to detach)
+# equivalent to: docker compose -f compose.chapkit.yml -f compose.chap-route.yml up
+#                (add -d to detach)
 ```
 
 This adds, on top of the DHIS2 services:
@@ -149,8 +157,10 @@ This adds, on top of the DHIS2 services:
 - `chap-route-init` - one-shot that wires up the DHIS2 → chap route, then exits
 
 To run chap-core without the chapkit models, use the base overlay directly:
-`docker compose -f compose.chap.yml up`. To run a single model, stack its overlay on the
-base, e.g. `docker compose -f compose.chap.yml -f compose.ewars.yml up`.
+`docker compose -f compose.chap.yml -f compose.chap-route.yml up`. To run a single model,
+stack its overlay in between, e.g.
+`docker compose -f compose.chap.yml -f compose.ewars.yml -f compose.chap-route.yml up`.
+Keep `compose.chap-route.yml` last so the route points at the bundled `chap` service.
 
 ### How DHIS2 talks to chap
 
@@ -165,8 +175,13 @@ external CHAP server, so the one-shot **repoints** it rather than leaving the st
 target in place. The target depends on the stack:
 
 - `make start` (DHIS2 only) → `http://host.docker.internal:8000/**` (a chap-core you
-  run from source on the host; override with `CHAP_ROUTE_URL`).
-- `make start-chap` (overlay) → `http://chap:8000/**` (the bundled chap service).
+  run from source on the host; override with `CHAP_ROUTE_URL`). This is the default
+  `chap-route-init` baked into `compose.yml`.
+- `make start-chap` (overlay) → `http://chap:8000/**` (the bundled chap service). The
+  `compose.chap-route.yml` layer sets `CHAP_ROUTE_URL` to the in-network address and
+  makes `chap-route-init` wait for `chap` to be healthy. It is applied with a second
+  `-f` rather than inside the `include` graph because `include` rejects a redefinition
+  of the same-named `chap-route-init` service as a conflict instead of deep-merging it.
 
 Verify the route proxies through:
 
@@ -208,6 +223,26 @@ Both databases are published on `127.0.0.1` so you can browse the data with psql
   `v`). The EWARS chapkit model (`compose.ewars.yml`) tracks `:latest` (pulled on every
   `up`) so it doesn't go stale.
 - To stop and remove the chap-core volumes as well: `docker compose -f compose.chapkit.yml down -v`.
+
+## Troubleshooting
+
+Three issues that previously broke `make start-chap` are now fixed in the compose files;
+the rationale is recorded here in case you hit the symptoms on a different setup.
+
+- **`services.chap-route-init conflicts with imported resource`** (stack won't start).
+  Docker Compose **v2.24+** applies override files before joining `include`d files, so
+  redefining an `include`d service in the same file is rejected as a conflict. The route
+  override therefore lives in its own `compose.chap-route.yml`, layered with a second `-f`
+  (which deep-merges) rather than inside the `include` graph. On Compose v2.20–v2.23 the
+  old in-place override happened to work, but the `-f` layering works on all v2.20+ — so
+  this is the portable form regardless of version.
+- **`could not resize shared memory segment ... No space left on device`** (analytics
+  fails). Docker defaults a container's `/dev/shm` to 64 MB; parallel analytics
+  vacuum/sort operations overflow it. `dhis2-db` sets `shm_size: 1gb` in `compose.yml`.
+- **Login bounces back to the login page over `http://localhost:8080`.** With
+  `server.https = true`, DHIS2 marks the session cookie `Secure`, which browsers refuse to
+  store over plain HTTP. `docker/dhis.conf` sets `server.https = false` for this local HTTP
+  setup — restore `true` only when DHIS2 sits behind an HTTPS reverse proxy.
 
 ## Notes
 
