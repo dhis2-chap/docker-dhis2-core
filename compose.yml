@@ -81,6 +81,10 @@ services:
     volumes:
       - dhis2-db-dump:/opt/dump
       - ./docker/prepare-dump.sh:/opt/prepare-dump.sh:ro
+      # Optional host-supplied dump. Set DHIS2_DB_DUMP_FILE to a local .sql.gz to
+      # load it instead of downloading DHIS2_DB_DUMP_URL; defaults to /dev/null
+      # (no local file -> prepare-dump.sh falls back to the download).
+      - ${DHIS2_DB_DUMP_FILE:-/dev/null}:/opt/src/dump.sql.gz:ro
 
   # One-shot DB prep that runs after the dump loads and before DHIS2 boots, on
   # every start (start / start-chap / *-force). Two jobs:
