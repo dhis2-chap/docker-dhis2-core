@@ -32,9 +32,9 @@ set -eu
 DUMP_FILE=dump.sql.gz
 RAW_TMP=raw.sql.gz.part
 OUT_TMP=dump.sql.gz.part
-# A host-supplied dump can be bind-mounted here (see compose.yml: DHIS2_DB_DUMP_FILE).
-# When unset the mount defaults to /dev/null, which fails the gzip test below, so we
-# fall back to downloading DHIS2_DB_DUMP_URL.
+# When DHIS2_DB_DUMP_FILE is set, compose bind-mounts that host file here; otherwise the
+# mount defaults to /dev/null. We branch on the env var (not the mount) so that a set-but-
+# broken path fails loudly instead of silently falling back to the network — see below.
 LOCAL_SRC=/opt/src/dump.sql.gz
 
 if [ -f "$DUMP_FILE" ]; then
@@ -44,10 +44,22 @@ fi
 
 # Source the dump into a temp file and verify it is a complete, valid gzip BEFORE doing
 # anything else. A truncated/empty download (or a bogus local file) must never become the
-# cached dump. Prefer a bind-mounted local file; otherwise download DHIS2_DB_DUMP_URL.
+# cached dump. Precedence: a set DHIS2_DB_DUMP_FILE wins over DHIS2_DB_DUMP_URL.
 rm -f "$RAW_TMP" "$OUT_TMP"
-if [ -f "$LOCAL_SRC" ] && gzip -t "$LOCAL_SRC" 2>/dev/null; then
-  echo "Using local dump $LOCAL_SRC"
+if [ -n "${DHIS2_DB_DUMP_FILE:-}" ]; then
+  # The user explicitly asked for a local dump, so it MUST be present and valid — do not
+  # quietly download the wrong data because of a typo'd path. (A path that does not exist
+  # on the host bind-mounts as an empty directory, so LOCAL_SRC won't be a regular file.)
+  if [ ! -f "$LOCAL_SRC" ]; then
+    echo "ERROR: DHIS2_DB_DUMP_FILE=$DHIS2_DB_DUMP_FILE is set, but no readable file is" >&2
+    echo "       mounted at $LOCAL_SRC. Check the host path exists and is a file." >&2
+    exit 1
+  fi
+  if ! gzip -t "$LOCAL_SRC" 2>/dev/null; then
+    echo "ERROR: DHIS2_DB_DUMP_FILE=$DHIS2_DB_DUMP_FILE is not a valid gzip (.sql.gz) file." >&2
+    exit 1
+  fi
+  echo "Using local dump $DHIS2_DB_DUMP_FILE"
   cp "$LOCAL_SRC" "$RAW_TMP"
 else
   echo "Downloading dump from $DHIS2_DB_DUMP_URL"

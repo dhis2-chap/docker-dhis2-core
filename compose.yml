@@ -77,13 +77,17 @@ services:
     command: sh /opt/prepare-dump.sh
     environment:
       DHIS2_DB_DUMP_URL: "${DHIS2_DB_DUMP_URL:-https://databases.dhis2.org/climate/laos/2.42/laos.sql.gz}"
+      # Passed through (not just bind-mounted) so the script can tell a local dump was
+      # requested and fail loudly if the mounted file is missing/invalid, rather than
+      # silently downloading DHIS2_DB_DUMP_URL.
+      DHIS2_DB_DUMP_FILE: "${DHIS2_DB_DUMP_FILE:-}"
     working_dir: /opt/dump
     volumes:
       - dhis2-db-dump:/opt/dump
       - ./docker/prepare-dump.sh:/opt/prepare-dump.sh:ro
-      # Optional host-supplied dump. Set DHIS2_DB_DUMP_FILE to a local .sql.gz to
-      # load it instead of downloading DHIS2_DB_DUMP_URL; defaults to /dev/null
-      # (no local file -> prepare-dump.sh falls back to the download).
+      # Optional host-supplied dump. Set DHIS2_DB_DUMP_FILE to a local .sql.gz to load it
+      # instead of downloading DHIS2_DB_DUMP_URL (a set DHIS2_DB_DUMP_FILE takes
+      # precedence). Defaults to /dev/null when unset -> prepare-dump.sh uses the download.
       - ${DHIS2_DB_DUMP_FILE:-/dev/null}:/opt/src/dump.sql.gz:ro
 
   # One-shot DB prep that runs after the dump loads and before DHIS2 boots, on
