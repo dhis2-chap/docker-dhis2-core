@@ -136,8 +136,12 @@ Bring up everything (DHIS2 + chap-core + chapkit models), foreground (`Ctrl+C` t
 
 ```bash
 make start-chap
-# equivalent to: docker compose -f compose.chapkit.yml up   (add -d to detach)
+# equivalent to:
+#   CHAP_ROUTE_URL=http://chap:8000/** docker compose -f compose.chapkit.yml up   (add -d to detach)
 ```
+
+`make` sets `CHAP_ROUTE_URL` to the bundled chap service for you; only invoking `docker
+compose` directly (as below) requires passing it yourself.
 
 This adds, on top of the DHIS2 services:
 
@@ -149,8 +153,11 @@ This adds, on top of the DHIS2 services:
 - `chap-route-init` - one-shot that wires up the DHIS2 → chap route, then exits
 
 To run chap-core without the chapkit models, use the base overlay directly:
-`docker compose -f compose.chap.yml up`. To run a single model, stack its overlay on the
-base, e.g. `docker compose -f compose.chap.yml -f compose.ewars.yml up`.
+`CHAP_ROUTE_URL=http://chap:8000/** docker compose -f compose.chap.yml up`. To run a single
+model, stack its overlay on the base, e.g.
+`CHAP_ROUTE_URL=http://chap:8000/** docker compose -f compose.chap.yml -f compose.ewars.yml up`.
+(The `CHAP_ROUTE_URL` points the DHIS2 → chap route at the bundled chap service; `make
+start-chap` sets it automatically.)
 
 ### How DHIS2 talks to chap
 

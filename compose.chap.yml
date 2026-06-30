@@ -158,18 +158,17 @@ services:
       - "127.0.0.1:${CHAP_DB_PORT:-15433}:5432"
 
   # ----- one-shot: register the DHIS2 Route that proxies DHIS2 -> chap -----
-  # The base stack (compose.yml) already defines chap-route-init; here we only
-  # override it to target the bundled chap service (instead of the host's
-  # host.docker.internal) and to wait for chap to be healthy first. Image, command
-  # and the script mount are inherited from the base service.
-  chap-route-init:
-    environment:
-      CHAP_ROUTE_URL: "http://chap:8000/**"
-    depends_on:
-      dhis2-web:
-        condition: service_healthy
-      chap:
-        condition: service_healthy
+  # chap-route-init is defined once, in the base stack (compose.yml). We deliberately do
+  # NOT redefine it here: overriding a service that was pulled in via `include:` is
+  # rejected by older Docker Compose with "services.chap-route-init conflicts with imported
+  # resource". Instead the route target is parameterized through CHAP_ROUTE_URL, which the
+  # Makefile sets to http://chap:8000/** for the chap stack (and `make start` leaves at the
+  # host.docker.internal default). Running this overlay directly with `docker compose`?
+  # Pass it yourself: CHAP_ROUTE_URL=http://chap:8000/** docker compose -f compose.chap.yml up
+  #
+  # The one-shot only calls DHIS2 to register the route (it never contacts chap), so it does
+  # not need to wait for chap to be healthy — DHIS2 being healthy (the base depends_on) is
+  # enough; the route is just stored config that resolves once chap is up.
 
 volumes:
   chap-db: {}
