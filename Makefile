@@ -55,14 +55,18 @@ start-force:
 	@$(COMPOSE) up --remove-orphans
 
 # --- start: DHIS2 + chap-core (with chapkit models) --- (foreground; Ctrl+C to stop)
+# The chap stack points the DHIS2 -> chap route at the bundled chap service. We set
+# CHAP_ROUTE_URL here rather than overriding chap-route-init in compose.chap.yml, because
+# redefining a service imported via `include:` is rejected by older Docker Compose
+# ("conflicts with imported resource"). An explicit CHAP_ROUTE_URL in your environment wins.
 start-chap:
 	@echo ">>> Starting DHIS2 + chap-core with chapkit models (compose.chapkit.yml) — Ctrl+C to stop"
-	@$(COMPOSE) -f $(CHAP_FILE) up --remove-orphans
+	@CHAP_ROUTE_URL="$${CHAP_ROUTE_URL:-http://chap:8000/**}" $(COMPOSE) -f $(CHAP_FILE) up --remove-orphans
 
 start-chap-force:
 	@echo ">>> Recreating DHIS2 + chap-core from scratch (removing volumes) — Ctrl+C to stop"
 	@$(COMPOSE) -f $(CHAP_FILE) down -v --remove-orphans
-	@$(COMPOSE) -f $(CHAP_FILE) up --remove-orphans
+	@CHAP_ROUTE_URL="$${CHAP_ROUTE_URL:-http://chap:8000/**}" $(COMPOSE) -f $(CHAP_FILE) up --remove-orphans
 
 # --- manage (operate on the whole project, chap + model services included) ---
 clean:
