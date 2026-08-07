@@ -1,0 +1,9 @@
+id: dhis2-demo-climate-service
+name: DHIS2 Demo Climate Service
+
+extent:
+  name: Laos
+  bbox: [100.0, 13.5, 107.5, 22.5]
+  country_code: LAO
+
+data_dir: ./data

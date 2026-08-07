@@ -1,0 +1,56 @@
+# DHIS2 + OCS overlay.
+#
+# This file includes the standalone DHIS2 stack (compose.yml) and adds an OCS
+# service plus a one-shot that registers a DHIS2 Route pointing at OCS.
+# Bring it up with:
+#
+#   docker compose -f compose.ocs.yml up -d
+#
+# OCS has no authentication and is published on the host for local inspection;
+# DHIS2 reaches it internally at http://ocs:9000 through the auto-created Route.
+
+include:
+  - compose.yml
+
+services:
+  ocs:
+    image: ${OCS_IMAGE:-ghcr.io/dhis2/open-climate-service}:${OCS_IMAGE_TAG:-main}
+    platform: linux/amd64
+    environment:
+      HOST: 0.0.0.0
+      PORT: ${OCS_PORT:-9000}
+      CLIMATE_SERVICE_CONFIG: /app/climate-service.yaml
+    ports:
+      - "127.0.0.1:${OCS_PORT:-9000}:9000"
+    volumes:
+      - ./docker/ocs/climate-service.yaml:/app/climate-service.yaml:ro
+      - ocs-data:/app/data
+      - ${NETRC_FILE:-/dev/null}:/home/ocs/.netrc:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:${OCS_PORT:-9000}/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  ocs-route-init:
+    image: alpine
+    restart: "no"
+    command: sh /opt/create-dhis2-route.sh
+    environment:
+      DHIS2_BASE_URL: "http://dhis2-web:8080"
+      DHIS2_ADMIN_USER: "${DHIS2_ADMIN_USER:-admin}"
+      DHIS2_ADMIN_PASSWORD: "${DHIS2_ADMIN_PASSWORD:-district}"
+      ROUTE_CODE: "${OCS_ROUTE_CODE:-ocs}"
+      ROUTE_NAME: "${OCS_ROUTE_NAME:-OCS}"
+      ROUTE_URL: "${OCS_ROUTE_URL:-http://ocs:9000/**}"
+      ROUTE_UID: "${OCS_ROUTE_UID:-}"
+    volumes:
+      - ./docker/create-dhis2-route.sh:/opt/create-dhis2-route.sh:ro
+    depends_on:
+      dhis2-web:
+        condition: service_healthy
+
+volumes:
+  ocs-data: {}

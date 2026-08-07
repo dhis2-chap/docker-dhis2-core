@@ -161,10 +161,10 @@ services:
   # chap-route-init is defined once, in the base stack (compose.yml). We deliberately do
   # NOT redefine it here: overriding a service that was pulled in via `include:` is
   # rejected by older Docker Compose with "services.chap-route-init conflicts with imported
-  # resource". Instead the route target is parameterized through CHAP_ROUTE_URL, which the
+  # resource". Instead the route target is parameterized through DHIS2_ROUTE_URL, which the
   # Makefile sets to http://chap:8000/** for the chap stack (and `make start` leaves at the
   # host.docker.internal default). Running this overlay directly with `docker compose`?
-  # Pass it yourself: CHAP_ROUTE_URL=http://chap:8000/** docker compose -f compose.chap.yml up
+  # Pass it yourself: DHIS2_ROUTE_URL=http://chap:8000/** docker compose -f compose.chap.yml up
   #
   # The one-shot only calls DHIS2 to register the route (it never contacts chap), so it does
   # not need to wait for chap to be healthy — DHIS2 being healthy (the base depends_on) is

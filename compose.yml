@@ -142,23 +142,26 @@ services:
   # DHIS2 -> chap-core. Runs on every start. The climate demo dump ships a "chap"
   # route aimed at a remote CHAP server; this repoints it at a locally reachable
   # chap so the Modelling App works without manual fixup. Idempotent (no-op once it
-  # already matches) — see docker/create-chap-route.sh.
+  # already matches) — see docker/create-dhis2-route.sh.
   #
   # In this DHIS2-only stack the default target is host.docker.internal:8000, i.e. a
-  # chap-core you run from source on the host. Override CHAP_ROUTE_URL if your local
+  # chap-core you run from source on the host. Override DHIS2_ROUTE_URL if your local
   # chap is on a different host port. The chap overlay (compose.chap.yml) overrides
   # this to the bundled chap service (http://chap:8000/**).
   chap-route-init:
     image: alpine
     restart: "no"
-    command: sh /opt/create-chap-route.sh
+    command: sh /opt/create-dhis2-route.sh
     environment:
       DHIS2_BASE_URL: "http://dhis2-web:8080"
       DHIS2_ADMIN_USER: "${DHIS2_ADMIN_USER:-admin}"
       DHIS2_ADMIN_PASSWORD: "${DHIS2_ADMIN_PASSWORD:-district}"
-      CHAP_ROUTE_URL: "${CHAP_ROUTE_URL:-http://host.docker.internal:8000/**}"
+      ROUTE_CODE: "${ROUTE_CODE:-chap}"
+      ROUTE_NAME: "${ROUTE_NAME:-chap}"
+      ROUTE_URL: "${ROUTE_URL:-${DHIS2_ROUTE_URL:-http://host.docker.internal:8000/**}}"
+      ROUTE_UID: "${ROUTE_UID:-${DHIS2_ROUTE_UID:-TkdmmuSCGPA}}"
     volumes:
-      - ./docker/create-chap-route.sh:/opt/create-chap-route.sh:ro
+      - ./docker/create-dhis2-route.sh:/opt/create-dhis2-route.sh:ro
     depends_on:
       dhis2-web:
         condition: service_healthy

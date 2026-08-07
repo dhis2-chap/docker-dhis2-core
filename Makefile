@@ -1,4 +1,4 @@
-.PHONY: help start start-force start-chap start-chap-force clean ps logs route
+.PHONY: help start start-force start-chap start-chap-force start-ocs start-ocs-force clean ps logs route ocs-route clean-ocs-data restart-ocs
 
 # ==============================================================================
 # Config
@@ -16,6 +16,10 @@ CHAP_FILE := compose.chapkit.yml
 DHIS2_ADMIN_USER     ?= admin
 DHIS2_ADMIN_PASSWORD ?= district
 
+# Default netrc to ~/.netrc if it exists; fall back to /dev/null so the OCS
+# stack starts even for users who don't have ERA5-Land credentials.
+NETRC_DEFAULT := $(shell [ -f "$(HOME)/.netrc" ] && echo "$(HOME)/.netrc" || echo "/dev/null")
+
 # ==============================================================================
 # Targets
 # ==============================================================================
@@ -28,12 +32,18 @@ help:
 	@echo "  start-force       Recreate DHIS2 from scratch (wipes volumes, fresh dump + analytics)"
 	@echo "  start-chap        Start DHIS2 + chap-core with chapkit models (compose.chapkit.yml)"
 	@echo "  start-chap-force  Recreate DHIS2 + chap-core from scratch (wipes all volumes)"
+	@echo "  start-ocs         Start DHIS2 + OCS (compose.ocs.yml)"
+	@echo "  start-ocs-force   Recreate DHIS2 + OCS from scratch (wipes all volumes)"
 	@echo ""
 	@echo "Manage (the start targets run in the foreground — Ctrl+C to stop):"
 	@echo "  clean             Remove containers AND volumes (full reset)"
+	@echo "  restart-ocs       Restart the OCS container only (picks up .env changes)"
+	@echo "  clean-ocs-data    Clear OCS cached data only (DHIS2 data preserved)"
+	@echo "                    To change the extent, edit docker/ocs/climate-service.yaml then re-run"
 	@echo "  ps                Show container status"
 	@echo "  logs              Follow logs from all services"
 	@echo "  route             Show the DHIS2 -> chap route and probe it end-to-end"
+	@echo "  ocs-route         Show the DHIS2 -> OCS route and probe it end-to-end"
 	@echo ""
 	@echo "Published host ports (all on 127.0.0.1, override per stack to avoid clashes):"
 	@echo "  DHIS2_PORT    DHIS2 web        default 8080"
@@ -56,17 +66,26 @@ start-force:
 
 # --- start: DHIS2 + chap-core (with chapkit models) --- (foreground; Ctrl+C to stop)
 # The chap stack points the DHIS2 -> chap route at the bundled chap service. We set
-# CHAP_ROUTE_URL here rather than overriding chap-route-init in compose.chap.yml, because
+# DHIS2_ROUTE_URL here rather than overriding chap-route-init in compose.chap.yml, because
 # redefining a service imported via `include:` is rejected by older Docker Compose
-# ("conflicts with imported resource"). An explicit CHAP_ROUTE_URL in your environment wins.
+# ("conflicts with imported resource"). An explicit DHIS2_ROUTE_URL in your environment wins.
 start-chap:
 	@echo ">>> Starting DHIS2 + chap-core with chapkit models (compose.chapkit.yml) — Ctrl+C to stop"
-	@CHAP_ROUTE_URL="$${CHAP_ROUTE_URL:-http://chap:8000/**}" $(COMPOSE) -f $(CHAP_FILE) up --remove-orphans
+	@DHIS2_ROUTE_URL="$${DHIS2_ROUTE_URL:-$${CHAP_ROUTE_URL:-http://chap:8000/**}}" $(COMPOSE) -f $(CHAP_FILE) up --remove-orphans
 
 start-chap-force:
 	@echo ">>> Recreating DHIS2 + chap-core from scratch (removing volumes) — Ctrl+C to stop"
 	@$(COMPOSE) -f $(CHAP_FILE) down -v --remove-orphans
-	@CHAP_ROUTE_URL="$${CHAP_ROUTE_URL:-http://chap:8000/**}" $(COMPOSE) -f $(CHAP_FILE) up --remove-orphans
+	@DHIS2_ROUTE_URL="$${DHIS2_ROUTE_URL:-$${CHAP_ROUTE_URL:-http://chap:8000/**}}" $(COMPOSE) -f $(CHAP_FILE) up --remove-orphans
+
+start-ocs:
+	@echo ">>> Starting DHIS2 + OCS (compose.ocs.yml) — Ctrl+C to stop"
+	@NETRC_FILE="$${NETRC_FILE:-$(NETRC_DEFAULT)}" OCS_ROUTE_URL="$${OCS_ROUTE_URL:-http://ocs:9000/**}" $(COMPOSE) -f compose.ocs.yml up --remove-orphans
+
+start-ocs-force:
+	@echo ">>> Recreating DHIS2 + OCS from scratch (removing volumes) — Ctrl+C to stop"
+	@$(COMPOSE) -f compose.ocs.yml down -v --remove-orphans
+	@NETRC_FILE="$${NETRC_FILE:-$(NETRC_DEFAULT)}" OCS_ROUTE_URL="$${OCS_ROUTE_URL:-http://ocs:9000/**}" $(COMPOSE) -f compose.ocs.yml up --remove-orphans
 
 # --- manage (operate on the whole project, chap + model services included) ---
 clean:
@@ -86,6 +105,23 @@ route:
 	@$(COMPOSE) -f $(CHAP_FILE) exec -T dhis2-web curl -s -u "$(DHIS2_ADMIN_USER):$(DHIS2_ADMIN_PASSWORD)" "http://localhost:8080/api/routes.json?filter=code:eq:chap&fields=id,code,url"; echo
 	@echo ">>> proxy probe (DHIS2 -> chap):"
 	@$(COMPOSE) -f $(CHAP_FILE) exec -T dhis2-web curl -s -u "$(DHIS2_ADMIN_USER):$(DHIS2_ADMIN_PASSWORD)" "http://localhost:8080/api/routes/chap/run/health"; echo
+
+ocs-route:
+	@echo ">>> OCS route in DHIS2:"
+	@$(COMPOSE) -f compose.ocs.yml exec -T dhis2-web curl -s -u "$(DHIS2_ADMIN_USER):$(DHIS2_ADMIN_PASSWORD)" "http://localhost:8080/api/routes.json?filter=code:eq:ocs&fields=id,code,url"; echo
+	@echo ">>> proxy probe (DHIS2 -> OCS):"
+	@$(COMPOSE) -f compose.ocs.yml exec -T dhis2-web curl -s -u "$(DHIS2_ADMIN_USER):$(DHIS2_ADMIN_PASSWORD)" "http://localhost:8080/api/routes/ocs/run/health"; echo
+
+# Stops OCS, wipes only the ocs-data volume, and leaves DHIS2 untouched.
+# To also change the extent, edit docker/ocs/climate-service.yaml before restarting.
+restart-ocs:
+	@echo ">>> Restarting OCS"
+	@NETRC_FILE="$${NETRC_FILE:-$(NETRC_DEFAULT)}" $(COMPOSE) -f compose.ocs.yml up -d --no-deps --force-recreate ocs
+
+clean-ocs-data:
+	@echo ">>> Clearing OCS cached data (DHIS2 data preserved)"
+	@$(COMPOSE) -f compose.ocs.yml stop ocs
+	@$(COMPOSE) -f compose.ocs.yml run --rm --no-deps ocs sh -c "rm -rf /app/data/*"
 
 # ==============================================================================
 # Default

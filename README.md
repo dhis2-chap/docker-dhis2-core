@@ -56,7 +56,7 @@ This starts the DHIS2-only stack (`compose.yml`):
   tables (needed by the Data Visualizer, Climate app, and CHAP), then exits
 - `chap-route-init` - one-shot: repoints the demo dump's `chap` route (which ships
   aimed at a remote CHAP server) at `host.docker.internal:8000` — i.e. a chap-core you
-  run **from source on the host**. Set `CHAP_ROUTE_URL` to override the target. (The
+  run **from source on the host**. Set `DHIS2_ROUTE_URL` to override the target. (The
   chap overlay points it at the bundled `chap` service instead — see below.)
 
 First startup takes a few minutes: the dump loads, DHIS2 migrates and boots, then
@@ -120,6 +120,34 @@ make clean
 # equivalent to: docker compose -f compose.chapkit.yml down -v
 ```
 
+## Running with OCS
+
+The same pattern can be used for OCS. A dedicated overlay starts DHIS2 plus an OCS container, then registers a DHIS2 Route so DHIS2 can proxy requests to OCS internally.
+
+```bash
+make start-ocs
+# equivalent to:
+#   OCS_ROUTE_URL=http://ocs:9000/** docker compose -f compose.ocs.yml up   (add -d to detach)
+```
+
+This adds:
+
+- `ocs` - OCS API service published on `127.0.0.1:9000`
+- `ocs-route-init` - one-shot that creates or repoints the DHIS2 route with code `ocs`
+
+The OCS image defaults to the published `main` tag because `latest` is not currently available from GHCR. Override it with `OCS_IMAGE_TAG` or `OCS_IMAGE` if you need a different tag or mirror.
+
+Verify the route proxies through:
+
+```bash
+curl -u admin:district http://127.0.0.1:8080/api/routes/ocs/run/health
+# -> {"status":"success","message":"healthy"}
+```
+
+The OCS container reads its configuration from [docker/ocs/climate-service.yaml](docker/ocs/climate-service.yaml). Adjust the extent and data directory there before you start it.
+
+The generic route helper lives in [docker/create-dhis2-route.sh](docker/create-dhis2-route.sh) and can be reused for other DHIS2 routes beyond Chap and OCS.
+
 ## Running with chap-core
 
 `make start-chap` runs `compose.chapkit.yml`, the umbrella overlay for the whole chap
@@ -137,10 +165,10 @@ Bring up everything (DHIS2 + chap-core + chapkit models), foreground (`Ctrl+C` t
 ```bash
 make start-chap
 # equivalent to:
-#   CHAP_ROUTE_URL=http://chap:8000/** docker compose -f compose.chapkit.yml up   (add -d to detach)
+#   DHIS2_ROUTE_URL=http://chap:8000/** docker compose -f compose.chapkit.yml up   (add -d to detach)
 ```
 
-`make` sets `CHAP_ROUTE_URL` to the bundled chap service for you; only invoking `docker
+`make` sets `DHIS2_ROUTE_URL` to the bundled chap service for you; only invoking `docker
 compose` directly (as below) requires passing it yourself.
 
 This adds, on top of the DHIS2 services:
@@ -153,10 +181,10 @@ This adds, on top of the DHIS2 services:
 - `chap-route-init` - one-shot that wires up the DHIS2 → chap route, then exits
 
 To run chap-core without the chapkit models, use the base overlay directly:
-`CHAP_ROUTE_URL=http://chap:8000/** docker compose -f compose.chap.yml up`. To run a single
+`DHIS2_ROUTE_URL=http://chap:8000/** docker compose -f compose.chap.yml up`. To run a single
 model, stack its overlay on the base, e.g.
-`CHAP_ROUTE_URL=http://chap:8000/** docker compose -f compose.chap.yml -f compose.ewars.yml up`.
-(The `CHAP_ROUTE_URL` points the DHIS2 → chap route at the bundled chap service; `make
+`DHIS2_ROUTE_URL=http://chap:8000/** docker compose -f compose.chap.yml -f compose.ewars.yml up`.
+(The `DHIS2_ROUTE_URL` points the DHIS2 → chap route at the bundled chap service; `make
 start-chap` sets it automatically.)
 
 ### How DHIS2 talks to chap
@@ -172,7 +200,7 @@ external CHAP server, so the one-shot **repoints** it rather than leaving the st
 target in place. The target depends on the stack:
 
 - `make start` (DHIS2 only) → `http://host.docker.internal:8000/**` (a chap-core you
-  run from source on the host; override with `CHAP_ROUTE_URL`).
+  run from source on the host; override with `DHIS2_ROUTE_URL`).
 - `make start-chap` (overlay) → `http://chap:8000/**` (the bundled chap service).
 
 Verify the route proxies through:
